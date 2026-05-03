@@ -1,0 +1,56 @@
+# ─────────────────────────────────────────────────────────
+# Sentinel - Docker Compose Deployment
+# ─────────────────────────────────────────────────────────
+# Mounts the Docker socket for container monitoring.
+# The daemon runs as a single container with persistent
+# SQLite storage and configurable environment.
+#
+# Usage:
+#   docker compose up -d --build
+#   docker compose logs -f sentinel
+# ─────────────────────────────────────────────────────────
+
+services:
+  sentinel:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: sentinel
+    restart: unless-stopped
+    ports:
+      - "${SENTINEL_API_PORT:-9120}:9120"
+    volumes:
+      # Docker socket for container monitoring (read-only recommended)
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      # Persistent SQLite database
+      - sentinel_data:/app/db
+      # Rules configuration
+      - ./rules.yaml:/app/rules.yaml:ro
+    environment:
+      - SENTINEL_DOCKER_URL=unix:///var/run/docker.sock
+      - SENTINEL_API_HOST=0.0.0.0
+      - SENTINEL_API_PORT=9120
+      - SENTINEL_RULES_PATH=rules.yaml
+      - SENTINEL_DB_PATH=db/sentinel.db
+      - SENTINEL_POLL_INTERVAL=${SENTINEL_POLL_INTERVAL:-15}
+      - SENTINEL_CIRCUIT_BREAKER_THRESHOLD=${SENTINEL_CIRCUIT_BREAKER_THRESHOLD:-3}
+      - SENTINEL_CIRCUIT_BREAKER_WINDOW_MINUTES=${SENTINEL_CIRCUIT_BREAKER_WINDOW_MINUTES:-5}
+      - SENTINEL_LOG_LEVEL=${SENTINEL_LOG_LEVEL:-INFO}
+      - SENTINEL_LOG_FORMAT=${SENTINEL_LOG_FORMAT:-json}
+      - SENTINEL_DISCORD_WEBHOOK_URL=${SENTINEL_DISCORD_WEBHOOK_URL:-}
+      - SENTINEL_SLACK_WEBHOOK_URL=${SENTINEL_SLACK_WEBHOOK_URL:-}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:9120/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  sentinel_data:
+    driver: local

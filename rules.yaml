@@ -1,0 +1,77 @@
+# ─────────────────────────────────────────────────────────
+# Sentinel - Rules Configuration
+# ─────────────────────────────────────────────────────────
+# Each rule defines a condition and the autonomous action
+# that Sentinel will take when the condition is met.
+#
+# Supported metrics: cpu_percent, memory_percent, memory_usage_mb
+# Supported operators: ">", "<", ">=", "<=", "=="
+# Supported actions: restart, stop, scale, exec
+# ─────────────────────────────────────────────────────────
+
+global:
+  poll_interval: 15          # Seconds between metric collection cycles
+  default_severity: warning  # Default alert severity: info | warning | critical
+
+rules:
+  - name: "High CPU Auto-Restart"
+    description: "Restart containers consuming excessive CPU for sustained periods"
+    enabled: true
+    match:
+      container_name_pattern: ".*"    # Regex: match all containers
+      exclude_patterns:
+        - "^sentinel$"                # Never act on ourselves
+        - "^traefik.*"                # Never touch the reverse proxy
+    condition:
+      metric: cpu_percent
+      operator: ">"
+      threshold: 90.0
+      sustained_seconds: 60          # Must exceed threshold for this duration
+    action:
+      type: restart
+      timeout: 30                    # Seconds to wait for graceful stop
+    notify:
+      channels:
+        - console
+        - discord
+      severity: critical
+
+  - name: "Memory Leak Detection"
+    description: "Alert and restart containers leaking memory"
+    enabled: true
+    match:
+      container_name_pattern: ".*"
+      exclude_patterns:
+        - "^sentinel$"
+    condition:
+      metric: memory_percent
+      operator: ">"
+      threshold: 85.0
+      sustained_seconds: 120
+    action:
+      type: restart
+      timeout: 30
+    notify:
+      channels:
+        - console
+      severity: warning
+
+  - name: "Unhealthy Container Watchdog"
+    description: "Restart containers that Docker reports as unhealthy"
+    enabled: true
+    match:
+      container_name_pattern: ".*"
+      exclude_patterns:
+        - "^sentinel$"
+    condition:
+      metric: health_status
+      operator: "=="
+      threshold: "unhealthy"
+      sustained_seconds: 30
+    action:
+      type: restart
+      timeout: 30
+    notify:
+      channels:
+        - console
+      severity: critical
