@@ -189,7 +189,7 @@ class StateManager:
             SELECT id, container_id, container_name, rule_name,
                    action_type, success, error_message, created_at
             FROM intervention_history
-            ORDER BY created_at DESC
+            ORDER BY created_at DESC, id DESC
             LIMIT ?
             """,
             (limit,),
