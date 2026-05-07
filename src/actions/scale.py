@@ -46,8 +46,12 @@ class ScaleComposeAction(BaseAction):
 
         try:
             proc = await asyncio.create_subprocess_exec(
-                "docker", "compose", "up", "-d",
-                "--scale", f"{service_name}={replicas}",
+                "docker",
+                "compose",
+                "up",
+                "-d",
+                "--scale",
+                f"{service_name}={replicas}",
                 "--no-recreate",
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
@@ -76,9 +80,7 @@ class ScaleComposeAction(BaseAction):
         except ActionExecutionError:
             raise
         except Exception as e:
-            raise ActionExecutionError(
-                f"Failed to scale service '{service_name}': {e}"
-            ) from e
+            raise ActionExecutionError(f"Failed to scale service '{service_name}': {e}") from e
 
     @staticmethod
     def _infer_service_name(container_name: str) -> str:

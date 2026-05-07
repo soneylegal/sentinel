@@ -49,8 +49,10 @@ class TestInterventionRecording:
         ids = []
         for i in range(5):
             row_id = await state_manager.record_intervention(
-                container_id=f"c{i}", container_name="web",
-                rule_name="rule", action_type="restart",
+                container_id=f"c{i}",
+                container_name="web",
+                rule_name="rule",
+                action_type="restart",
             )
             ids.append(row_id)
         assert ids == sorted(ids)
@@ -58,9 +60,12 @@ class TestInterventionRecording:
 
     async def test_record_failed_intervention(self, state_manager: StateManager) -> None:
         await state_manager.record_intervention(
-            container_id="abc123", container_name="web-app-1",
-            rule_name="High CPU", action_type="restart",
-            success=False, error_message="Container not found",
+            container_id="abc123",
+            container_name="web-app-1",
+            rule_name="High CPU",
+            action_type="restart",
+            success=False,
+            error_message="Container not found",
         )
         history = await state_manager.get_recent_history(limit=1)
         assert history[0]["success"] is False
@@ -69,8 +74,10 @@ class TestInterventionRecording:
     async def test_success_defaults_to_true(self, state_manager: StateManager) -> None:
         """When success is not specified, it should default to True."""
         await state_manager.record_intervention(
-            container_id="c1", container_name="web",
-            rule_name="rule", action_type="restart",
+            container_id="c1",
+            container_name="web",
+            rule_name="rule",
+            action_type="restart",
         )
         history = await state_manager.get_recent_history(limit=1)
         assert history[0]["success"] is True
@@ -84,8 +91,10 @@ class TestHistoryRetrieval:
     async def test_reverse_chronological_order(self, state_manager: StateManager) -> None:
         for i in range(5):
             await state_manager.record_intervention(
-                container_id=f"c{i}", container_name=f"svc-{i}",
-                rule_name="rule", action_type="restart",
+                container_id=f"c{i}",
+                container_name=f"svc-{i}",
+                rule_name="rule",
+                action_type="restart",
             )
         history = await state_manager.get_recent_history(limit=5)
         # IDs are autoincrement, so descending ID = reverse insertion order
@@ -95,8 +104,10 @@ class TestHistoryRetrieval:
     async def test_limit_respected(self, state_manager: StateManager) -> None:
         for i in range(10):
             await state_manager.record_intervention(
-                container_id=f"c{i}", container_name="test",
-                rule_name="rule", action_type="restart",
+                container_id=f"c{i}",
+                container_name="test",
+                rule_name="rule",
+                action_type="restart",
             )
         assert len(await state_manager.get_recent_history(limit=3)) == 3
         assert len(await state_manager.get_recent_history(limit=50)) == 10
@@ -106,21 +117,30 @@ class TestHistoryRetrieval:
 
     async def test_record_contains_all_fields(self, state_manager: StateManager) -> None:
         await state_manager.record_intervention(
-            container_id="abc123", container_name="webapp",
-            rule_name="High CPU", action_type="restart",
+            container_id="abc123",
+            container_name="webapp",
+            rule_name="High CPU",
+            action_type="restart",
         )
         record = (await state_manager.get_recent_history(limit=1))[0]
         expected = {
-            "id", "container_id", "container_name",
-            "rule_name", "action_type", "success",
-            "error_message", "created_at",
+            "id",
+            "container_id",
+            "container_name",
+            "rule_name",
+            "action_type",
+            "success",
+            "error_message",
+            "created_at",
         }
         assert set(record.keys()) == expected
 
     async def test_created_at_is_iso_format(self, state_manager: StateManager) -> None:
         await state_manager.record_intervention(
-            container_id="c1", container_name="web",
-            rule_name="rule", action_type="restart",
+            container_id="c1",
+            container_name="web",
+            rule_name="rule",
+            action_type="restart",
         )
         record = (await state_manager.get_recent_history(limit=1))[0]
         # SQLite strftime produces ISO-like: 2026-05-06T03:47:08.123Z
@@ -142,8 +162,10 @@ class TestCircuitBreakerThreshold:
         """threshold=3: 2 restarts should NOT trip."""
         for _ in range(2):
             await state_manager.record_intervention(
-                container_id="c1", container_name="webapp",
-                rule_name="rule", action_type="restart",
+                container_id="c1",
+                container_name="webapp",
+                rule_name="rule",
+                action_type="restart",
             )
         await state_manager.check_circuit_breaker("webapp")  # No raise
 
@@ -151,8 +173,10 @@ class TestCircuitBreakerThreshold:
         """threshold=3: exactly 3 restarts MUST trip."""
         for _ in range(3):
             await state_manager.record_intervention(
-                container_id="c1", container_name="webapp",
-                rule_name="rule", action_type="restart",
+                container_id="c1",
+                container_name="webapp",
+                rule_name="rule",
+                action_type="restart",
             )
         with pytest.raises(CircuitBreakerOpen):
             await state_manager.check_circuit_breaker("webapp")
@@ -161,19 +185,24 @@ class TestCircuitBreakerThreshold:
         """threshold=3: 5 restarts should also trip."""
         for _ in range(5):
             await state_manager.record_intervention(
-                container_id="c1", container_name="webapp",
-                rule_name="rule", action_type="restart",
+                container_id="c1",
+                container_name="webapp",
+                rule_name="rule",
+                action_type="restart",
             )
         with pytest.raises(CircuitBreakerOpen):
             await state_manager.check_circuit_breaker("webapp")
 
     async def test_strict_threshold_trips_on_first(
-        self, state_manager_strict: StateManager,
+        self,
+        state_manager_strict: StateManager,
     ) -> None:
         """threshold=1: a single restart must trip immediately."""
         await state_manager_strict.record_intervention(
-            container_id="c1", container_name="api",
-            rule_name="rule", action_type="restart",
+            container_id="c1",
+            container_name="api",
+            rule_name="rule",
+            action_type="restart",
         )
         with pytest.raises(CircuitBreakerOpen) as exc_info:
             await state_manager_strict.check_circuit_breaker("api")
@@ -190,8 +219,10 @@ class TestCircuitBreakerExceptionDetail:
     async def test_exception_contains_container_name(self, state_manager: StateManager) -> None:
         for _ in range(3):
             await state_manager.record_intervention(
-                container_id="c1", container_name="redis-cache",
-                rule_name="rule", action_type="restart",
+                container_id="c1",
+                container_name="redis-cache",
+                rule_name="rule",
+                action_type="restart",
             )
         with pytest.raises(CircuitBreakerOpen) as exc_info:
             await state_manager.check_circuit_breaker("redis-cache")
@@ -200,8 +231,10 @@ class TestCircuitBreakerExceptionDetail:
     async def test_exception_contains_restart_count(self, state_manager: StateManager) -> None:
         for _ in range(4):
             await state_manager.record_intervention(
-                container_id="c1", container_name="webapp",
-                rule_name="rule", action_type="restart",
+                container_id="c1",
+                container_name="webapp",
+                rule_name="rule",
+                action_type="restart",
             )
         with pytest.raises(CircuitBreakerOpen) as exc_info:
             await state_manager.check_circuit_breaker("webapp")
@@ -210,8 +243,10 @@ class TestCircuitBreakerExceptionDetail:
     async def test_exception_contains_window_minutes(self, state_manager: StateManager) -> None:
         for _ in range(3):
             await state_manager.record_intervention(
-                container_id="c1", container_name="webapp",
-                rule_name="rule", action_type="restart",
+                container_id="c1",
+                container_name="webapp",
+                rule_name="rule",
+                action_type="restart",
             )
         with pytest.raises(CircuitBreakerOpen) as exc_info:
             await state_manager.check_circuit_breaker("webapp")
@@ -220,8 +255,10 @@ class TestCircuitBreakerExceptionDetail:
     async def test_exception_message_is_human_readable(self, state_manager: StateManager) -> None:
         for _ in range(3):
             await state_manager.record_intervention(
-                container_id="c1", container_name="webapp",
-                rule_name="rule", action_type="restart",
+                container_id="c1",
+                container_name="webapp",
+                rule_name="rule",
+                action_type="restart",
             )
         with pytest.raises(CircuitBreakerOpen) as exc_info:
             await state_manager.check_circuit_breaker("webapp")
@@ -240,16 +277,22 @@ class TestCircuitBreakerActionTypes:
     async def test_stop_actions_count(self, state_manager: StateManager) -> None:
         """Mixed restart+stop should accumulate toward threshold."""
         await state_manager.record_intervention(
-            container_id="c1", container_name="webapp",
-            rule_name="rule", action_type="restart",
+            container_id="c1",
+            container_name="webapp",
+            rule_name="rule",
+            action_type="restart",
         )
         await state_manager.record_intervention(
-            container_id="c1", container_name="webapp",
-            rule_name="rule", action_type="stop",
+            container_id="c1",
+            container_name="webapp",
+            rule_name="rule",
+            action_type="stop",
         )
         await state_manager.record_intervention(
-            container_id="c1", container_name="webapp",
-            rule_name="rule", action_type="restart",
+            container_id="c1",
+            container_name="webapp",
+            rule_name="rule",
+            action_type="restart",
         )
         with pytest.raises(CircuitBreakerOpen):
             await state_manager.check_circuit_breaker("webapp")
@@ -258,8 +301,10 @@ class TestCircuitBreakerActionTypes:
         """3 scale actions should NOT trip the breaker (only restart/stop count)."""
         for _ in range(5):
             await state_manager.record_intervention(
-                container_id="c1", container_name="webapp",
-                rule_name="rule", action_type="scale",
+                container_id="c1",
+                container_name="webapp",
+                rule_name="rule",
+                action_type="scale",
             )
         # Should NOT raise — scale is not a destructive loop action
         await state_manager.check_circuit_breaker("webapp")
@@ -267,17 +312,23 @@ class TestCircuitBreakerActionTypes:
     async def test_mixed_scale_and_restart(self, state_manager: StateManager) -> None:
         """2 restarts + 3 scales should NOT trip (only 2 counting actions)."""
         await state_manager.record_intervention(
-            container_id="c1", container_name="webapp",
-            rule_name="rule", action_type="restart",
+            container_id="c1",
+            container_name="webapp",
+            rule_name="rule",
+            action_type="restart",
         )
         for _ in range(3):
             await state_manager.record_intervention(
-                container_id="c1", container_name="webapp",
-                rule_name="rule", action_type="scale",
+                container_id="c1",
+                container_name="webapp",
+                rule_name="rule",
+                action_type="scale",
             )
         await state_manager.record_intervention(
-            container_id="c1", container_name="webapp",
-            rule_name="rule", action_type="restart",
+            container_id="c1",
+            container_name="webapp",
+            rule_name="rule",
+            action_type="restart",
         )
         # 2 restarts + 3 scales = only 2 counting → below threshold of 3
         await state_manager.check_circuit_breaker("webapp")
@@ -286,8 +337,10 @@ class TestCircuitBreakerActionTypes:
         """exec actions should NOT count toward the breaker."""
         for _ in range(5):
             await state_manager.record_intervention(
-                container_id="c1", container_name="webapp",
-                rule_name="rule", action_type="exec",
+                container_id="c1",
+                container_name="webapp",
+                rule_name="rule",
+                action_type="exec",
             )
         await state_manager.check_circuit_breaker("webapp")
 
@@ -300,12 +353,15 @@ class TestCircuitBreakerIsolation:
     """Each container has its own independent breaker."""
 
     async def test_tripped_container_does_not_affect_others(
-        self, state_manager: StateManager,
+        self,
+        state_manager: StateManager,
     ) -> None:
         for _ in range(3):
             await state_manager.record_intervention(
-                container_id="c1", container_name="webapp",
-                rule_name="rule", action_type="restart",
+                container_id="c1",
+                container_name="webapp",
+                rule_name="rule",
+                action_type="restart",
             )
         with pytest.raises(CircuitBreakerOpen):
             await state_manager.check_circuit_breaker("webapp")
@@ -316,20 +372,25 @@ class TestCircuitBreakerIsolation:
         await state_manager.check_circuit_breaker("postgres")
 
     async def test_multiple_containers_independent_thresholds(
-        self, state_manager: StateManager,
+        self,
+        state_manager: StateManager,
     ) -> None:
         """Two containers approaching threshold independently."""
         # webapp: 2 restarts (below threshold)
         for _ in range(2):
             await state_manager.record_intervention(
-                container_id="c1", container_name="webapp",
-                rule_name="rule", action_type="restart",
+                container_id="c1",
+                container_name="webapp",
+                rule_name="rule",
+                action_type="restart",
             )
         # redis: 3 restarts (at threshold)
         for _ in range(3):
             await state_manager.record_intervention(
-                container_id="c2", container_name="redis",
-                rule_name="rule", action_type="restart",
+                container_id="c2",
+                container_name="redis",
+                rule_name="rule",
+                action_type="restart",
             )
 
         await state_manager.check_circuit_breaker("webapp")  # OK
@@ -342,8 +403,10 @@ class TestCircuitBreakerIsolation:
             restarts = i + 1  # container-0 gets 1 restart, container-9 gets 10
             for _ in range(restarts):
                 await state_manager.record_intervention(
-                    container_id=f"c{i}", container_name=f"svc-{i}",
-                    rule_name="rule", action_type="restart",
+                    container_id=f"c{i}",
+                    container_name=f"svc-{i}",
+                    rule_name="rule",
+                    action_type="restart",
                 )
 
         # Containers 0,1 (1-2 restarts) should pass
@@ -366,8 +429,10 @@ class TestCircuitBreakerReset:
     async def test_reset_clears_open_state(self, state_manager: StateManager) -> None:
         for _ in range(3):
             await state_manager.record_intervention(
-                container_id="c1", container_name="webapp",
-                rule_name="rule", action_type="restart",
+                container_id="c1",
+                container_name="webapp",
+                rule_name="rule",
+                action_type="restart",
             )
         with pytest.raises(CircuitBreakerOpen):
             await state_manager.check_circuit_breaker("webapp")
@@ -384,8 +449,10 @@ class TestCircuitBreakerReset:
         """Reset clears breaker state but history survives for auditing."""
         for _ in range(3):
             await state_manager.record_intervention(
-                container_id="c1", container_name="webapp",
-                rule_name="rule", action_type="restart",
+                container_id="c1",
+                container_name="webapp",
+                rule_name="rule",
+                action_type="restart",
             )
         with pytest.raises(CircuitBreakerOpen):
             await state_manager.check_circuit_breaker("webapp")
@@ -397,7 +464,8 @@ class TestCircuitBreakerReset:
         assert len(webapp_records) == 3  # History is preserved
 
     async def test_reset_then_still_trips_because_history_remains(
-        self, state_manager: StateManager,
+        self,
+        state_manager: StateManager,
     ) -> None:
         """After reset, the old history still counts — breaker re-trips immediately.
 
@@ -408,8 +476,10 @@ class TestCircuitBreakerReset:
         """
         for _ in range(3):
             await state_manager.record_intervention(
-                container_id="c1", container_name="webapp",
-                rule_name="rule", action_type="restart",
+                container_id="c1",
+                container_name="webapp",
+                rule_name="rule",
+                action_type="restart",
             )
         with pytest.raises(CircuitBreakerOpen):
             await state_manager.check_circuit_breaker("webapp")
@@ -421,7 +491,8 @@ class TestCircuitBreakerReset:
             await state_manager.check_circuit_breaker("webapp")
 
     async def test_reset_nonexistent_container_is_safe(
-        self, state_manager: StateManager,
+        self,
+        state_manager: StateManager,
     ) -> None:
         """Resetting a container that was never tripped should not error."""
         await state_manager.reset_circuit_breaker("never-existed")  # No raise
@@ -442,8 +513,10 @@ class TestCircuitBreakerStatePersistence:
         """Tripping should create a row in circuit_breaker_state."""
         for _ in range(3):
             await state_manager.record_intervention(
-                container_id="c1", container_name="webapp",
-                rule_name="rule", action_type="restart",
+                container_id="c1",
+                container_name="webapp",
+                rule_name="rule",
+                action_type="restart",
             )
         with pytest.raises(CircuitBreakerOpen):
             await state_manager.check_circuit_breaker("webapp")
@@ -458,8 +531,10 @@ class TestCircuitBreakerStatePersistence:
         """Each trip should increment trip_count."""
         for _ in range(3):
             await state_manager.record_intervention(
-                container_id="c1", container_name="webapp",
-                rule_name="rule", action_type="restart",
+                container_id="c1",
+                container_name="webapp",
+                rule_name="rule",
+                action_type="restart",
             )
 
         # Trip once
@@ -481,8 +556,10 @@ class TestCircuitBreakerStatePersistence:
         for name in ("webapp", "redis", "worker"):
             for _ in range(3):
                 await state_manager.record_intervention(
-                    container_id="c1", container_name=name,
-                    rule_name="rule", action_type="restart",
+                    container_id="c1",
+                    container_name=name,
+                    rule_name="rule",
+                    action_type="restart",
                 )
             with pytest.raises(CircuitBreakerOpen):
                 await state_manager.check_circuit_breaker(name)
@@ -507,8 +584,10 @@ class TestCrashLoopSimulation:
         """
         for i in range(10):
             await state_manager.record_intervention(
-                container_id="c1", container_name="crashy-app",
-                rule_name="High CPU", action_type="restart",
+                container_id="c1",
+                container_name="crashy-app",
+                rule_name="High CPU",
+                action_type="restart",
             )
 
             if i < 2:
@@ -520,21 +599,28 @@ class TestCrashLoopSimulation:
                     await state_manager.check_circuit_breaker("crashy-app")
 
     async def test_different_rules_same_container_accumulate(
-        self, state_manager: StateManager,
+        self,
+        state_manager: StateManager,
     ) -> None:
         """Restarts from different rules on the same container should
         accumulate toward the same breaker."""
         await state_manager.record_intervention(
-            container_id="c1", container_name="webapp",
-            rule_name="High CPU", action_type="restart",
+            container_id="c1",
+            container_name="webapp",
+            rule_name="High CPU",
+            action_type="restart",
         )
         await state_manager.record_intervention(
-            container_id="c1", container_name="webapp",
-            rule_name="Memory Leak", action_type="restart",
+            container_id="c1",
+            container_name="webapp",
+            rule_name="Memory Leak",
+            action_type="restart",
         )
         await state_manager.record_intervention(
-            container_id="c1", container_name="webapp",
-            rule_name="Unhealthy", action_type="stop",
+            container_id="c1",
+            container_name="webapp",
+            rule_name="Unhealthy",
+            action_type="stop",
         )
 
         with pytest.raises(CircuitBreakerOpen):
@@ -548,23 +634,29 @@ class TestCrashLoopSimulation:
         """
         for _ in range(3):
             await state_manager.record_intervention(
-                container_id="c1", container_name="webapp",
-                rule_name="rule", action_type="restart",
-                success=False, error_message="Docker timeout",
+                container_id="c1",
+                container_name="webapp",
+                rule_name="rule",
+                action_type="restart",
+                success=False,
+                error_message="Docker timeout",
             )
 
         with pytest.raises(CircuitBreakerOpen):
             await state_manager.check_circuit_breaker("webapp")
 
     async def test_breaker_prevents_infinite_restart_loop(
-        self, state_manager_strict: StateManager,
+        self,
+        state_manager_strict: StateManager,
     ) -> None:
         """With threshold=1, the first restart should immediately
         prevent any further restarts — the core crash loop protection."""
         # First restart
         await state_manager_strict.record_intervention(
-            container_id="c1", container_name="fragile-app",
-            rule_name="rule", action_type="restart",
+            container_id="c1",
+            container_name="fragile-app",
+            rule_name="rule",
+            action_type="restart",
         )
 
         # Every subsequent check must be blocked

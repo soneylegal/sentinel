@@ -58,8 +58,8 @@ SAMPLE_DOCKER_STATS: dict[str, Any] = {
         "system_cpu_usage": 9_000_000_000,
     },
     "memory_stats": {
-        "usage": 104_857_600,        # 100 MiB
-        "limit": 1_073_741_824,      # 1 GiB
+        "usage": 104_857_600,  # 100 MiB
+        "limit": 1_073_741_824,  # 1 GiB
         "stats": {
             "inactive_file": 10_485_760,  # 10 MiB cache
         },
@@ -158,6 +158,7 @@ def mock_docker_client(mock_docker_container: MagicMock) -> MagicMock:
 # State Manager (In-Memory SQLite)
 # ─────────────────────────────────────────────────────────
 
+
 @pytest_asyncio.fixture
 async def state_manager(tmp_path) -> StateManager:  # type: ignore[misc]
     """StateManager backed by a temporary on-disk SQLite database.
@@ -190,6 +191,7 @@ async def state_manager_strict(tmp_path) -> StateManager:  # type: ignore[misc]
 # ─────────────────────────────────────────────────────────
 # ContainerMetrics Factory
 # ─────────────────────────────────────────────────────────
+
 
 @pytest.fixture
 def make_metrics():  # type: ignore[no-untyped-def]
@@ -232,6 +234,7 @@ def make_metrics():  # type: ignore[no-untyped-def]
 # ─────────────────────────────────────────────────────────
 # Rule Configuration Factory
 # ─────────────────────────────────────────────────────────
+
 
 @pytest.fixture
 def make_rule():  # type: ignore[no-untyped-def]
@@ -284,6 +287,7 @@ def make_rule():  # type: ignore[no-untyped-def]
 # Mocked Action & Notifier Strategies
 # ─────────────────────────────────────────────────────────
 
+
 @pytest.fixture
 def mock_action() -> AsyncMock:
     """A mocked BaseAction with a tracked execute() method."""
@@ -321,6 +325,7 @@ def mock_state_manager() -> AsyncMock:
 # ─────────────────────────────────────────────────────────
 # Rules Engine (pre-wired with mocks)
 # ─────────────────────────────────────────────────────────
+
 
 @pytest.fixture
 def make_engine(mock_action, mock_notifier, mock_state_manager):  # type: ignore[no-untyped-def]
@@ -375,6 +380,7 @@ def make_engine(mock_action, mock_notifier, mock_state_manager):  # type: ignore
 # FastAPI TestClient
 # ─────────────────────────────────────────────────────────
 
+
 @pytest.fixture
 def api_client() -> TestClient:
     """FastAPI TestClient with mocked collector and state manager.
@@ -391,28 +397,30 @@ def api_client() -> TestClient:
 
     # Mock state manager with sample history
     mock_state = AsyncMock()
-    mock_state.get_recent_history = AsyncMock(return_value=[
-        {
-            "id": 1,
-            "container_id": "abc123def456",
-            "container_name": "webapp",
-            "rule_name": "High CPU Auto-Restart",
-            "action_type": "restart",
-            "success": True,
-            "error_message": None,
-            "created_at": "2026-05-03T12:00:00Z",
-        },
-        {
-            "id": 2,
-            "container_id": "def789abc012",
-            "container_name": "redis",
-            "rule_name": "Memory Leak Detection",
-            "action_type": "restart",
-            "success": False,
-            "error_message": "Container not found",
-            "created_at": "2026-05-03T11:30:00Z",
-        },
-    ])
+    mock_state.get_recent_history = AsyncMock(
+        return_value=[
+            {
+                "id": 1,
+                "container_id": "abc123def456",
+                "container_name": "webapp",
+                "rule_name": "High CPU Auto-Restart",
+                "action_type": "restart",
+                "success": True,
+                "error_message": None,
+                "created_at": "2026-05-03T12:00:00Z",
+            },
+            {
+                "id": 2,
+                "container_id": "def789abc012",
+                "container_name": "redis",
+                "rule_name": "Memory Leak Detection",
+                "action_type": "restart",
+                "success": False,
+                "error_message": "Container not found",
+                "created_at": "2026-05-03T11:30:00Z",
+            },
+        ]
+    )
     mock_state.get_circuit_breaker_status = AsyncMock(return_value=[])
     mock_state.reset_circuit_breaker = AsyncMock()
     app_state.state_manager = mock_state
@@ -424,6 +432,7 @@ def api_client() -> TestClient:
 # ─────────────────────────────────────────────────────────
 # YAML Rules File (temp file fixture)
 # ─────────────────────────────────────────────────────────
+
 
 @pytest.fixture
 def sample_rules_yaml(tmp_path) -> str:  # type: ignore[no-untyped-def]

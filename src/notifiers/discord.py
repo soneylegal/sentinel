@@ -19,9 +19,9 @@ logger = get_logger()
 
 # Severity → Discord embed color (decimal)
 _SEVERITY_COLORS = {
-    "info": 0x3498DB,       # Blue
-    "warning": 0xF39C12,    # Amber
-    "critical": 0xE74C3C,   # Red
+    "info": 0x3498DB,  # Blue
+    "warning": 0xF39C12,  # Amber
+    "critical": 0xE74C3C,  # Red
 }
 
 _SEVERITY_EMOJI = {
@@ -91,9 +91,7 @@ class DiscordNotifier(BaseNotifier):
                 ) as resp:
                     if resp.status not in (200, 204):
                         body = await resp.text()
-                        raise NotifierError(
-                            f"Discord webhook returned {resp.status}: {body}"
-                        )
+                        raise NotifierError(f"Discord webhook returned {resp.status}: {body}")
 
             logger.debug(
                 f"Discord notification sent: {title}",

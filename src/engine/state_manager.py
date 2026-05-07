@@ -114,7 +114,7 @@ class StateManager:
                 (container_name, f"-{self._window_minutes} minutes"),
             )
             row = await cursor.fetchone()
-            count = row[0] if row else 0  # type: ignore[index]
+            count = row[0] if row else 0
 
             if count >= self._threshold:
                 # Update circuit breaker state

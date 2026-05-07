@@ -34,6 +34,7 @@ class ViolationTracker:
     Used to implement the `sustained_seconds` feature — a condition
     must persist for a minimum duration before triggering an action.
     """
+
     first_seen: float = field(default_factory=time.monotonic)
     last_seen: float = field(default_factory=time.monotonic)
 
@@ -204,8 +205,7 @@ class RulesEngine:
             return
 
         logger.warning(
-            f"Executing action '{action_type}' on '{container_name}' "
-            f"(rule='{rule.name}')",
+            f"Executing action '{action_type}' on '{container_name}' " f"(rule='{rule.name}')",
             component="engine.rules",
         )
 

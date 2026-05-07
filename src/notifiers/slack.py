@@ -93,9 +93,7 @@ class SlackNotifier(BaseNotifier):
                 ) as resp:
                     if resp.status != 200:
                         body = await resp.text()
-                        raise NotifierError(
-                            f"Slack webhook returned {resp.status}: {body}"
-                        )
+                        raise NotifierError(f"Slack webhook returned {resp.status}: {body}")
 
             logger.debug(
                 f"Slack notification sent: {title}",

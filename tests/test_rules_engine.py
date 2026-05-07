@@ -37,9 +37,9 @@ class TestContainerMatching:
         assert not engine._matches_container(engine._rules[0], "sentinel")
 
     def test_multiple_exclude_patterns(self, make_engine, make_rule) -> None:  # type: ignore[no-untyped-def]
-        engine, _, _ = make_engine([
-            make_rule(excludes=[r"^sentinel$", r"^traefik.*", r"^monitoring-"])
-        ])
+        engine, _, _ = make_engine(
+            [make_rule(excludes=[r"^sentinel$", r"^traefik.*", r"^monitoring-"])]
+        )
         assert engine._matches_container(engine._rules[0], "webapp")
         assert not engine._matches_container(engine._rules[0], "sentinel")
         assert not engine._matches_container(engine._rules[0], "traefik-proxy")
@@ -47,10 +47,12 @@ class TestContainerMatching:
 
     def test_disabled_rule_filtered(self, make_engine, make_rule) -> None:  # type: ignore[no-untyped-def]
         """Disabled rules should be filtered out during engine initialization."""
-        engine, _, _ = make_engine([
-            make_rule(name="Active", enabled=True),
-            make_rule(name="Disabled", enabled=False),
-        ])
+        engine, _, _ = make_engine(
+            [
+                make_rule(name="Active", enabled=True),
+                make_rule(name="Disabled", enabled=False),
+            ]
+        )
         assert len(engine._rules) == 1
         assert engine._rules[0].name == "Active"
 
@@ -81,38 +83,36 @@ class TestConditionEvaluation:
         assert engine._condition_met(engine._rules[0], metrics)
 
     def test_health_status_comparison(self, make_engine, make_rule, make_metrics) -> None:  # type: ignore[no-untyped-def]
-        engine, _, _ = make_engine([
-            make_rule(metric="health_status", operator="==", threshold="unhealthy")
-        ])
+        engine, _, _ = make_engine(
+            [make_rule(metric="health_status", operator="==", threshold="unhealthy")]
+        )
         metrics = make_metrics(health_status="unhealthy")
         assert engine._condition_met(engine._rules[0], metrics)
 
     def test_health_status_healthy_no_match(self, make_engine, make_rule, make_metrics) -> None:  # type: ignore[no-untyped-def]
         """Healthy container should NOT match unhealthy condition."""
-        engine, _, _ = make_engine([
-            make_rule(metric="health_status", operator="==", threshold="unhealthy")
-        ])
+        engine, _, _ = make_engine(
+            [make_rule(metric="health_status", operator="==", threshold="unhealthy")]
+        )
         metrics = make_metrics(health_status="healthy")
         assert not engine._condition_met(engine._rules[0], metrics)
 
     def test_less_than_operator(self, make_engine, make_rule, make_metrics) -> None:  # type: ignore[no-untyped-def]
-        engine, _, _ = make_engine([
-            make_rule(metric="memory_percent", operator="<", threshold=20.0)
-        ])
+        engine, _, _ = make_engine(
+            [make_rule(metric="memory_percent", operator="<", threshold=20.0)]
+        )
         metrics = make_metrics(memory_percent=10.0)
         assert engine._condition_met(engine._rules[0], metrics)
 
     def test_equal_operator_numeric(self, make_engine, make_rule, make_metrics) -> None:  # type: ignore[no-untyped-def]
-        engine, _, _ = make_engine([
-            make_rule(metric="cpu_percent", operator="==", threshold=50.0)
-        ])
+        engine, _, _ = make_engine([make_rule(metric="cpu_percent", operator="==", threshold=50.0)])
         metrics = make_metrics(cpu_percent=50.0)
         assert engine._condition_met(engine._rules[0], metrics)
 
     def test_lte_operator(self, make_engine, make_rule, make_metrics) -> None:  # type: ignore[no-untyped-def]
-        engine, _, _ = make_engine([
-            make_rule(metric="memory_percent", operator="<=", threshold=50.0)
-        ])
+        engine, _, _ = make_engine(
+            [make_rule(metric="memory_percent", operator="<=", threshold=50.0)]
+        )
         assert engine._condition_met(engine._rules[0], make_metrics(memory_percent=50.0))
         assert engine._condition_met(engine._rules[0], make_metrics(memory_percent=30.0))
         assert not engine._condition_met(engine._rules[0], make_metrics(memory_percent=51.0))
@@ -124,9 +124,7 @@ class TestRuleEvaluation:
 
     async def test_immediate_trigger(self, make_engine, make_rule, make_metrics) -> None:  # type: ignore[no-untyped-def]
         """Rule with sustained=0 should trigger immediately."""
-        engine, action_mock, state_manager = make_engine([
-            make_rule(threshold=80.0, sustained=0)
-        ])
+        engine, action_mock, state_manager = make_engine([make_rule(threshold=80.0, sustained=0)])
 
         metrics = [make_metrics(cpu_percent=95.0)]
         await engine.evaluate(metrics)
@@ -136,9 +134,7 @@ class TestRuleEvaluation:
 
     async def test_no_trigger_below_threshold(self, make_engine, make_rule, make_metrics) -> None:  # type: ignore[no-untyped-def]
         """Metrics below threshold should not trigger any action."""
-        engine, action_mock, _ = make_engine([
-            make_rule(threshold=80.0, sustained=0)
-        ])
+        engine, action_mock, _ = make_engine([make_rule(threshold=80.0, sustained=0)])
 
         metrics = [make_metrics(cpu_percent=50.0)]
         await engine.evaluate(metrics)
@@ -147,9 +143,9 @@ class TestRuleEvaluation:
 
     async def test_excluded_container_skipped(self, make_engine, make_rule, make_metrics) -> None:  # type: ignore[no-untyped-def]
         """Excluded containers should never trigger actions."""
-        engine, action_mock, _ = make_engine([
-            make_rule(excludes=[r"^sentinel$"], threshold=10.0, sustained=0)
-        ])
+        engine, action_mock, _ = make_engine(
+            [make_rule(excludes=[r"^sentinel$"], threshold=10.0, sustained=0)]
+        )
 
         metrics = [make_metrics(container_name="sentinel", cpu_percent=99.0)]
         await engine.evaluate(metrics)
@@ -157,17 +153,16 @@ class TestRuleEvaluation:
         action_mock.execute.assert_not_called()
 
     async def test_circuit_breaker_prevents_action(  # type: ignore[no-untyped-def]
-        self, make_engine, make_rule, make_metrics,
+        self,
+        make_engine,
+        make_rule,
+        make_metrics,
     ) -> None:
         """When circuit breaker is open, action should NOT execute."""
-        engine, action_mock, sm_mock = make_engine([
-            make_rule(threshold=80.0, sustained=0)
-        ])
+        engine, action_mock, sm_mock = make_engine([make_rule(threshold=80.0, sustained=0)])
 
         # Simulate an open circuit breaker
-        sm_mock.check_circuit_breaker = AsyncMock(
-            side_effect=CircuitBreakerOpen("webapp", 5, 5)
-        )
+        sm_mock.check_circuit_breaker = AsyncMock(side_effect=CircuitBreakerOpen("webapp", 5, 5))
 
         metrics = [make_metrics(cpu_percent=95.0)]
         await engine.evaluate(metrics)
@@ -178,12 +173,13 @@ class TestRuleEvaluation:
         sm_mock.record_intervention.assert_not_called()
 
     async def test_multiple_containers_evaluated(  # type: ignore[no-untyped-def]
-        self, make_engine, make_rule, make_metrics,
+        self,
+        make_engine,
+        make_rule,
+        make_metrics,
     ) -> None:
         """All containers in the batch should be evaluated against the rules."""
-        engine, action_mock, _ = make_engine([
-            make_rule(threshold=80.0, sustained=0)
-        ])
+        engine, action_mock, _ = make_engine([make_rule(threshold=80.0, sustained=0)])
 
         metrics = [
             make_metrics(container_name="web-1", cpu_percent=95.0),
@@ -199,9 +195,9 @@ class TestRuleEvaluation:
         self, make_engine, make_rule, make_metrics
     ) -> None:  # type: ignore[no-untyped-def]
         """When a violation stops, the tracker should be pruned."""
-        engine, _, _ = make_engine([
-            make_rule(threshold=80.0, sustained=60)  # Requires 60s sustained
-        ])
+        engine, _, _ = make_engine(
+            [make_rule(threshold=80.0, sustained=60)]  # Requires 60s sustained
+        )
 
         # First cycle: violation starts (but won't trigger due to sustained)
         await engine.evaluate([make_metrics(cpu_percent=95.0)])

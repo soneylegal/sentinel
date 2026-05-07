@@ -32,6 +32,10 @@ ignore = [
     "N818",   # CircuitBreakerOpen is an intentional domain name
 ]
 
+[tool.black]
+line-length = 100
+target-version = ["py311"]
+
 [project]
 name = "sentinel"
 version = "1.0.0"

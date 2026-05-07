@@ -131,9 +131,14 @@ class TestHistoryEndpoint:
         """Each record must have all InterventionRecord fields."""
         record = api_client.get("/history").json()["records"][0]
         expected = {
-            "id", "container_id", "container_name",
-            "rule_name", "action_type", "success",
-            "error_message", "created_at",
+            "id",
+            "container_id",
+            "container_name",
+            "rule_name",
+            "action_type",
+            "success",
+            "error_message",
+            "created_at",
         }
         assert set(record.keys()) == expected
 
@@ -191,20 +196,22 @@ class TestCircuitBreakerGetEndpoint:
         """When breakers are tripped, the response should list them."""
         app = create_app()
         mock_state = AsyncMock()
-        mock_state.get_circuit_breaker_status = AsyncMock(return_value=[
-            {
-                "container_name": "webapp",
-                "trip_count": 3,
-                "last_tripped": "2026-05-07T00:00:00Z",
-                "is_open": True,
-            },
-            {
-                "container_name": "redis",
-                "trip_count": 1,
-                "last_tripped": "2026-05-07T00:05:00Z",
-                "is_open": False,
-            },
-        ])
+        mock_state.get_circuit_breaker_status = AsyncMock(
+            return_value=[
+                {
+                    "container_name": "webapp",
+                    "trip_count": 3,
+                    "last_tripped": "2026-05-07T00:00:00Z",
+                    "is_open": True,
+                },
+                {
+                    "container_name": "redis",
+                    "trip_count": 1,
+                    "last_tripped": "2026-05-07T00:05:00Z",
+                    "is_open": False,
+                },
+            ]
+        )
         app_state.state_manager = mock_state
         app_state.collector = MagicMock()
         app_state.start_time = datetime.now(UTC)
@@ -227,14 +234,16 @@ class TestCircuitBreakerGetEndpoint:
         """Each breaker record must have all CircuitBreakerRecord fields."""
         app = create_app()
         mock_state = AsyncMock()
-        mock_state.get_circuit_breaker_status = AsyncMock(return_value=[
-            {
-                "container_name": "webapp",
-                "trip_count": 1,
-                "last_tripped": "2026-05-07T00:00:00Z",
-                "is_open": True,
-            },
-        ])
+        mock_state.get_circuit_breaker_status = AsyncMock(
+            return_value=[
+                {
+                    "container_name": "webapp",
+                    "trip_count": 1,
+                    "last_tripped": "2026-05-07T00:00:00Z",
+                    "is_open": True,
+                },
+            ]
+        )
         app_state.state_manager = mock_state
         app_state.collector = MagicMock()
         app_state.start_time = datetime.now(UTC)

@@ -96,6 +96,7 @@ class ConditionOperator(str, Enum):
 
 class MatchConfig(BaseModel):
     """Container matching configuration with regex patterns."""
+
     container_name_pattern: str = ".*"
     exclude_patterns: list[str] = Field(default_factory=list)
 
@@ -121,6 +122,7 @@ class MatchConfig(BaseModel):
 
 class ConditionConfig(BaseModel):
     """Rule condition: metric + operator + threshold + sustained duration."""
+
     metric: str
     operator: ConditionOperator
     threshold: float | str  # str for health_status checks
@@ -137,6 +139,7 @@ class ConditionConfig(BaseModel):
 
 class ActionConfig(BaseModel):
     """Action to execute when a rule condition is met."""
+
     type: ActionType
     timeout: int = Field(default=30, ge=5, le=300)
     command: str | None = None  # For exec actions
@@ -153,12 +156,14 @@ class ActionConfig(BaseModel):
 
 class NotifyConfig(BaseModel):
     """Notification channels and severity for a rule."""
+
     channels: list[str] = Field(default_factory=lambda: ["console"])
     severity: Severity = Severity.WARNING
 
 
 class RuleConfig(BaseModel):
     """A single monitoring rule with match, condition, action, and notify."""
+
     name: str = Field(min_length=1, max_length=200)
     description: str = ""
     enabled: bool = True
@@ -170,12 +175,14 @@ class RuleConfig(BaseModel):
 
 class GlobalConfig(BaseModel):
     """Global settings from rules.yaml."""
+
     poll_interval: int = Field(default=15, ge=5, le=300)
     default_severity: Severity = Severity.WARNING
 
 
 class RulesFile(BaseModel):
     """Top-level schema for rules.yaml."""
+
     global_config: GlobalConfig = Field(default_factory=GlobalConfig, alias="global")
     rules: list[RuleConfig] = Field(min_length=1)
 
@@ -209,6 +216,6 @@ def load_rules(path: str | Path) -> RulesFile:
 def load_settings() -> SentinelSettings:
     """Load and validate environment settings."""
     try:
-        return SentinelSettings()  # type: ignore[call-arg]
+        return SentinelSettings()
     except Exception as e:
         raise ConfigurationError(f"Environment configuration error: {e}") from e

@@ -8,12 +8,9 @@ by Datadog, ELK, Loki, or any structured log aggregator.
 from __future__ import annotations
 
 import sys
-from typing import TYPE_CHECKING
+from typing import Any
 
 from loguru import logger
-
-if TYPE_CHECKING:
-    pass
 
 
 def setup_logger(level: str = "INFO", fmt: str = "json") -> None:
@@ -55,14 +52,16 @@ def setup_logger(level: str = "INFO", fmt: str = "json") -> None:
     )
 
 
-def _json_format(record: dict) -> str:  # type: ignore[type-arg]
+def _json_format(record: Any) -> str:
     """Custom JSON format string for Loguru serialization."""
-    return (
-        "{time:YYYY-MM-DDTHH:mm:ss.SSSZ} | {level} | "
-        "{name}:{function}:{line} | {message}\n"
-    )
+    return "{time:YYYY-MM-DDTHH:mm:ss.SSSZ} | {level} | {name}:{function}:{line} | {message}\n"
 
 
-def get_logger() -> logger:  # type: ignore[valid-type]
-    """Return the configured Loguru logger instance."""
+def get_logger() -> Any:
+    """Return the configured Loguru logger instance.
+
+    Returns ``loguru.logger`` — typed as ``Any`` because loguru does not
+    ship PEP 561 type stubs and mypy cannot resolve its attributes
+    under ``--strict``.  This is the officially recommended workaround.
+    """
     return logger

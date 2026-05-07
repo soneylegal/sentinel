@@ -133,7 +133,9 @@ class TestConditionConfig:
     )
     def test_all_valid_metrics_accepted(self, metric: str) -> None:
         config = ConditionConfig(
-            metric=metric, operator=ConditionOperator.GT, threshold=50.0,
+            metric=metric,
+            operator=ConditionOperator.GT,
+            threshold=50.0,
         )
         assert config.metric == metric
 
@@ -145,7 +147,9 @@ class TestConditionConfig:
         """Only the 4 documented metrics are accepted (case-sensitive)."""
         with pytest.raises(Exception):
             ConditionConfig(
-                metric=bad_metric, operator=ConditionOperator.GT, threshold=90.0,
+                metric=bad_metric,
+                operator=ConditionOperator.GT,
+                threshold=90.0,
             )
 
     def test_invalid_operator_rejected(self) -> None:
@@ -155,14 +159,17 @@ class TestConditionConfig:
     def test_sustained_seconds_negative_rejected(self) -> None:
         with pytest.raises(Exception):
             ConditionConfig(
-                metric="cpu_percent", operator=ConditionOperator.GT,
-                threshold=90.0, sustained_seconds=-1,
+                metric="cpu_percent",
+                operator=ConditionOperator.GT,
+                threshold=90.0,
+                sustained_seconds=-1,
             )
 
     def test_string_threshold_for_health(self) -> None:
         """health_status conditions use string thresholds."""
         config = ConditionConfig(
-            metric="health_status", operator=ConditionOperator.EQ,
+            metric="health_status",
+            operator=ConditionOperator.EQ,
             threshold="unhealthy",
         )
         assert config.threshold == "unhealthy"
@@ -228,7 +235,9 @@ class TestRuleConfig:
                 name="",
                 match=MatchConfig(),
                 condition=ConditionConfig(
-                    metric="cpu_percent", operator=ConditionOperator.GT, threshold=80,
+                    metric="cpu_percent",
+                    operator=ConditionOperator.GT,
+                    threshold=80,
                 ),
                 action=ActionConfig(type=ActionType.RESTART),
             )
@@ -240,7 +249,9 @@ class TestRuleConfig:
                 name="A" * 201,
                 match=MatchConfig(),
                 condition=ConditionConfig(
-                    metric="cpu_percent", operator=ConditionOperator.GT, threshold=80,
+                    metric="cpu_percent",
+                    operator=ConditionOperator.GT,
+                    threshold=80,
                 ),
                 action=ActionConfig(type=ActionType.RESTART),
             )
@@ -261,7 +272,9 @@ class TestRuleConfig:
                 name="Bad Rule",
                 match=MatchConfig(),
                 condition=ConditionConfig(
-                    metric="cpu_percent", operator=ConditionOperator.GT, threshold=80,
+                    metric="cpu_percent",
+                    operator=ConditionOperator.GT,
+                    threshold=80,
                 ),
             )  # type: ignore[call-arg]
 
@@ -271,7 +284,9 @@ class TestRuleConfig:
             RuleConfig(
                 name="Bad Rule",
                 condition=ConditionConfig(
-                    metric="cpu_percent", operator=ConditionOperator.GT, threshold=80,
+                    metric="cpu_percent",
+                    operator=ConditionOperator.GT,
+                    threshold=80,
                 ),
                 action=ActionConfig(type=ActionType.RESTART),
             )  # type: ignore[call-arg]
@@ -281,7 +296,9 @@ class TestRuleConfig:
             name="Test",
             match=MatchConfig(),
             condition=ConditionConfig(
-                metric="cpu_percent", operator=ConditionOperator.GT, threshold=80,
+                metric="cpu_percent",
+                operator=ConditionOperator.GT,
+                threshold=80,
             ),
             action=ActionConfig(type=ActionType.RESTART),
         )

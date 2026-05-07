@@ -24,15 +24,16 @@ logger = get_logger()
 @dataclass(frozen=True, slots=True)
 class ContainerMetrics:
     """Normalized, platform-agnostic container metrics snapshot."""
+
     container_id: str
     container_name: str
     image: str
-    status: str              # running, exited, paused, ...
-    health_status: str       # healthy, unhealthy, none
-    cpu_percent: float       # 0.0 - 100.0+
-    memory_percent: float    # 0.0 - 100.0
-    memory_usage_mb: float   # Current RSS in MiB
-    memory_limit_mb: float   # Container memory limit in MiB
+    status: str  # running, exited, paused, ...
+    health_status: str  # healthy, unhealthy, none
+    cpu_percent: float  # 0.0 - 100.0+
+    memory_percent: float  # 0.0 - 100.0
+    memory_usage_mb: float  # Current RSS in MiB
+    memory_limit_mb: float  # Container memory limit in MiB
     pids: int
     timestamp: datetime = field(default_factory=lambda: datetime.now(UTC))
 
@@ -95,7 +96,7 @@ class DockerAsyncCollector:
 
         metrics: list[ContainerMetrics] = []
         for result in results:
-            if isinstance(result, Exception):
+            if isinstance(result, BaseException):
                 logger.warning(
                     f"Failed to collect metrics for a container: {result}",
                     component="collectors.docker_async",
@@ -110,7 +111,8 @@ class DockerAsyncCollector:
         return metrics
 
     async def _collect_single(
-        self, container: aiodocker.docker.DockerContainer,
+        self,
+        container: aiodocker.docker.DockerContainer,
     ) -> ContainerMetrics | None:
         """Collect and normalize metrics for a single container."""
         try:
@@ -151,15 +153,17 @@ class DockerAsyncCollector:
             return None
 
     async def _get_stats_snapshot(
-        self, container: aiodocker.docker.DockerContainer,
+        self,
+        container: aiodocker.docker.DockerContainer,
     ) -> dict[str, Any] | None:
         """Get a single stats snapshot (non-streaming)."""
         try:
             stats_stream = container.stats(stream=False)
             # aiodocker returns an async generator even with stream=False
             # We need to get the first (and only) result
-            async for stats in stats_stream:
-                return stats  # type: ignore[return-value]
+            async for stats in stats_stream:  # type: ignore[attr-defined]
+                result: dict[str, Any] = stats
+                return result
         except Exception:
             return None
         return None
@@ -179,16 +183,15 @@ class DockerAsyncCollector:
         cpu_delta = cpu_usage.get("total_usage", 0) - precpu_usage.get("total_usage", 0)
 
         # Linux: system_cpu_usage is available
-        system_delta = (
-            cpu_stats.get("system_cpu_usage", 0)
-            - precpu_stats.get("system_cpu_usage", 0)
+        system_delta = cpu_stats.get("system_cpu_usage", 0) - precpu_stats.get(
+            "system_cpu_usage", 0
         )
 
         if system_delta > 0 and cpu_delta > 0:
             num_cpus = cpu_stats.get("online_cpus", 0)
             if num_cpus == 0:
                 num_cpus = len(cpu_usage.get("percpu_usage", [])) or 1
-            return (cpu_delta / system_delta) * num_cpus * 100.0
+            return float((cpu_delta / system_delta) * num_cpus * 100.0)
 
         return 0.0
 
@@ -216,4 +219,4 @@ class DockerAsyncCollector:
         """Extract container health status. Returns 'none' if no healthcheck."""
         state = info.get("State", {})
         health = state.get("Health", {})
-        return health.get("Status", "none")
+        return str(health.get("Status", "none"))

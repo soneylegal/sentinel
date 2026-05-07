@@ -164,5 +164,5 @@ async def reset_circuit_breaker(container_name: str) -> ResetResponse:
         status="ok",
         container_name=container_name,
         message=f"Circuit breaker for '{container_name}' has been reset. "
-                f"Autonomous actions are now re-enabled.",
+        f"Autonomous actions are now re-enabled.",
     )

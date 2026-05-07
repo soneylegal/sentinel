@@ -77,6 +77,4 @@ class StopAction(BaseAction):
                 component="actions.restart",
             )
         except Exception as e:
-            raise ActionExecutionError(
-                f"Failed to stop container '{container_name}': {e}"
-            ) from e
+            raise ActionExecutionError(f"Failed to stop container '{container_name}': {e}") from e
