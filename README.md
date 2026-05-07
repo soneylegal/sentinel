@@ -1,9 +1,12 @@
 <p align="center">
+  <a href="https://github.com/soneylegal/sentinel/actions/workflows/ci.yml"><img src="https://github.com/soneylegal/sentinel/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI"/></a>
   <img src="https://img.shields.io/badge/python-3.11+-3776AB?style=for-the-badge&logo=python&logoColor=white" alt="Python 3.11+"/>
   <img src="https://img.shields.io/badge/docker-socket-2496ED?style=for-the-badge&logo=docker&logoColor=white" alt="Docker"/>
   <img src="https://img.shields.io/badge/FastAPI-009688?style=for-the-badge&logo=fastapi&logoColor=white" alt="FastAPI"/>
   <img src="https://img.shields.io/badge/SQLite-003B57?style=for-the-badge&logo=sqlite&logoColor=white" alt="SQLite"/>
   <img src="https://img.shields.io/badge/license-Apache%202.0-red?style=for-the-badge" alt="License"/>
+  <img src="https://img.shields.io/badge/code%20style-black-000000?style=for-the-badge" alt="Code style: black"/>
+  <img src="https://img.shields.io/badge/type%20checked-mypy-blue?style=for-the-badge" alt="mypy"/>
 </p>
 
 <h1 align="center">🛡️ Sentinel</h1>
@@ -58,8 +61,9 @@ O **Sentinel** é um daemon enterprise-grade que opera de forma autônoma sobre 
 | **Logging** | Loguru | Logs estruturados em JSON (Datadog/ELK-ready) |
 | **Configuração** | Pydantic Settings | Validação rigorosa de `.env` e `rules.yaml` |
 | **Notificações** | `aiohttp` | Webhooks assíncronos para Discord e Slack |
-| **Lint / Type Check** | `ruff` + `mypy` | Qualidade de código |
-| **Testes** | `pytest` + `pytest-asyncio` | 36 testes unitários |
+| **Lint / Type Check** | `ruff` + `mypy` + `black` | Qualidade e formatação de código |
+| **Testes** | `pytest` + `pytest-asyncio` | 197 testes unitários e de integração |
+| **CI/CD** | GitHub Actions | Matrix Python 3.11/3.12/3.13 |
 
 ---
 
@@ -165,15 +169,18 @@ sentinel/
 │       ├── server.py               # Uvicorn como asyncio task
 │       └── routes.py               # Endpoints de observabilidade
 ├── tests/
-│   ├── test_config.py              # Validação Pydantic (14 testes)
-│   ├── test_state_manager.py       # SQLite + Circuit Breaker (7 testes)
-│   ├── test_rules_engine.py        # Matching + Conditions (10 testes)
-│   └── test_api.py                 # Endpoints FastAPI (5 testes)
+│   ├── conftest.py                 # Fixtures centralizadas + mocks
+│   ├── test_config.py              # Validação Pydantic (93 testes)
+│   ├── test_state_manager.py       # SQLite + Circuit Breaker (37 testes)
+│   ├── test_rules_engine.py        # Matching + Conditions (20 testes)
+│   └── test_api.py                 # Endpoints FastAPI (47 testes)
+├── .github/
+│   └── workflows/ci.yml            # GitHub Actions CI pipeline
 ├── db/                             # Banco SQLite (criado em runtime)
 ├── rules.yaml                      # Regras de monitoramento
 ├── docker-compose.yml              # Deploy com socket mount
 ├── Dockerfile                      # Multi-stage, non-root
-├── pyproject.toml                  # pytest + mypy + ruff
+├── pyproject.toml                  # pytest + mypy + ruff + black
 ├── requirements.txt                # Dependências
 ├── .env.example                    # Template de configuração
 ├── .gitignore
@@ -313,16 +320,77 @@ A API roda embutida no mesmo event loop do daemon (zero overhead de IPC).
 
 ```bash
 # Verificar saúde do daemon
-curl http://localhost:9120/health
-# {"status":"ok","docker_connected":true,"uptime_seconds":3421.5,"version":"1.0.0",...}
+curl -s http://localhost:9120/health | python -m json.tool
+```
+```json
+{
+    "status": "ok",
+    "docker_connected": true,
+    "uptime_seconds": 3421.50,
+    "version": "1.0.0",
+    "timestamp": "2026-05-07T18:30:00.000000+00:00"
+}
+```
 
+```bash
 # Ver histórico de ações
-curl http://localhost:9120/history
-# {"count":3,"records":[{"container_name":"webapp","action_type":"restart",...}]}
+curl -s http://localhost:9120/history | python -m json.tool
+```
+```json
+{
+    "count": 2,
+    "records": [
+        {
+            "id": 1,
+            "container_id": "abc123def456",
+            "container_name": "webapp",
+            "rule_name": "High CPU Auto-Restart",
+            "action_type": "restart",
+            "success": true,
+            "error_message": null,
+            "created_at": "2026-05-07T18:25:00.000Z"
+        },
+        {
+            "id": 2,
+            "container_id": "def789abc012",
+            "container_name": "redis",
+            "rule_name": "Memory Leak Detection",
+            "action_type": "restart",
+            "success": false,
+            "error_message": "Container not found",
+            "created_at": "2026-05-07T18:20:00.000Z"
+        }
+    ]
+}
+```
 
+```bash
+# Ver estado dos disjuntores
+curl -s http://localhost:9120/circuit-breakers | python -m json.tool
+```
+```json
+{
+    "breakers": [
+        {
+            "container_name": "webapp",
+            "trip_count": 3,
+            "last_tripped": "2026-05-07T18:25:00Z",
+            "is_open": true
+        }
+    ]
+}
+```
+
+```bash
 # Resetar disjuntor manualmente
-curl -X POST http://localhost:9120/circuit-breakers/webapp/reset
-# {"status":"ok","container_name":"webapp","message":"Circuit breaker reset..."}
+curl -s -X POST http://localhost:9120/circuit-breakers/webapp/reset | python -m json.tool
+```
+```json
+{
+    "status": "ok",
+    "container_name": "webapp",
+    "message": "Circuit breaker for 'webapp' has been reset. Autonomous actions are now re-enabled."
+}
 ```
 
 ---
@@ -333,22 +401,27 @@ curl -X POST http://localhost:9120/circuit-breakers/webapp/reset
 # Rodar todos os testes
 python -m pytest tests/ -v
 
+# Lint + Type check
+ruff check src/ tests/
+mypy src/ --strict
+black --check src/ tests/
+
 # Resultado esperado:
-# tests/test_api.py              5 passed
-# tests/test_config.py          14 passed
-# tests/test_rules_engine.py    10 passed
-# tests/test_state_manager.py    7 passed
-# ===================== 36 passed =====================
+# tests/test_config.py             93 passed
+# tests/test_api.py                47 passed
+# tests/test_state_manager.py      37 passed
+# tests/test_rules_engine.py       20 passed
+# ==================== 197 passed in ~2.5s ====================
 ```
 
 ### Cobertura de testes
 
 | Módulo | Testes | O que valida |
 |---|---|---|
-| `test_config.py` | 14 | Pydantic settings, regex, YAML parsing, Fail Fast |
-| `test_state_manager.py` | 7 | SQLite CRUD, Circuit Breaker trip/reset, isolamento por container |
-| `test_rules_engine.py` | 10 | Pattern matching, operadores, sustained-duration, exclusões |
-| `test_api.py` | 5 | Health OK/degraded, history, circuit breaker endpoints |
+| `test_config.py` | 93 | Pydantic settings, regex, YAML parsing, Fail Fast (22 cenários malformados) |
+| `test_api.py` | 47 | Todos os endpoints, schemas, 503 fallback, CORS, OpenAPI, 404/405 |
+| `test_state_manager.py` | 37 | SQLite CRUD, Circuit Breaker trip/reset, Crash Loop simulation, isolamento |
+| `test_rules_engine.py` | 20 | Pattern matching, operadores, sustained-duration, exclusões, circuit breaker |
 
 ---
 

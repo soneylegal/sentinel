@@ -37,3 +37,6 @@ Thumbs.db
 
 # ruff
 .ruff_cache/
+
+# Planning docs (local only)
+sentinel_release_sdd.md
