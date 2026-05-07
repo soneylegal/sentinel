@@ -12,7 +12,6 @@ is suppressed — escalating to human notification instead.
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -121,7 +120,8 @@ class StateManager:
                 # Update circuit breaker state
                 await self._db.execute(
                     """
-                    INSERT INTO circuit_breaker_state (container_name, trip_count, last_tripped, is_open)
+                    INSERT INTO circuit_breaker_state
+                        (container_name, trip_count, last_tripped, is_open)
                     VALUES (?, ?, datetime('now'), 1)
                     ON CONFLICT(container_name) DO UPDATE SET
                         trip_count = trip_count + 1,

@@ -8,7 +8,7 @@ by health-check systems, or inspected manually by operators.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
@@ -74,7 +74,7 @@ class _AppState:
     def __init__(self) -> None:
         self.collector: Any = None
         self.state_manager: Any = None
-        self.start_time: datetime = datetime.now(timezone.utc)
+        self.start_time: datetime = datetime.now(UTC)
         self.version: str = "1.0.0"
 
 
@@ -94,14 +94,14 @@ async def health_check() -> HealthResponse:
     if app_state.collector:
         docker_connected = app_state.collector.is_connected
 
-    uptime = (datetime.now(timezone.utc) - app_state.start_time).total_seconds()
+    uptime = (datetime.now(UTC) - app_state.start_time).total_seconds()
 
     return HealthResponse(
         status="ok" if docker_connected else "degraded",
         docker_connected=docker_connected,
         uptime_seconds=round(uptime, 2),
         version=app_state.version,
-        timestamp=datetime.now(timezone.utc).isoformat(),
+        timestamp=datetime.now(UTC).isoformat(),
     )
 
 

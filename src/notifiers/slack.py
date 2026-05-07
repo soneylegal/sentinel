@@ -6,7 +6,7 @@ Sends rich Block Kit notifications to a Slack channel via incoming webhook.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import aiohttp
 
@@ -45,7 +45,7 @@ class SlackNotifier(BaseNotifier):
     ) -> None:
         """Send a Slack Block Kit notification."""
         emoji = _SEVERITY_EMOJI.get(severity, ":information_source:")
-        timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+        timestamp = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S UTC")
 
         blocks = [
             {

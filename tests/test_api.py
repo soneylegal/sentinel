@@ -17,10 +17,9 @@ dependencies (collector, state_manager) injected via the
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
-import pytest
 from fastapi.testclient import TestClient
 
 from src.api.routes import app_state
@@ -151,7 +150,7 @@ class TestHistoryEndpoint:
         mock_collector.is_connected = True
         app_state.state_manager = mock_state
         app_state.collector = mock_collector
-        app_state.start_time = datetime.now(timezone.utc)
+        app_state.start_time = datetime.now(UTC)
 
         client = TestClient(app)
         data = client.get("/history").json()
@@ -208,7 +207,7 @@ class TestCircuitBreakerGetEndpoint:
         ])
         app_state.state_manager = mock_state
         app_state.collector = MagicMock()
-        app_state.start_time = datetime.now(timezone.utc)
+        app_state.start_time = datetime.now(UTC)
 
         client = TestClient(app)
         data = client.get("/circuit-breakers").json()
@@ -238,7 +237,7 @@ class TestCircuitBreakerGetEndpoint:
         ])
         app_state.state_manager = mock_state
         app_state.collector = MagicMock()
-        app_state.start_time = datetime.now(timezone.utc)
+        app_state.start_time = datetime.now(UTC)
 
         client = TestClient(app)
         record = client.get("/circuit-breakers").json()["breakers"][0]

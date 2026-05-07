@@ -10,9 +10,9 @@ Centralizes all test infrastructure:
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, PropertyMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 import pytest_asyncio
@@ -35,7 +35,6 @@ from src.core.config import (
 from src.engine.rules import RulesEngine
 from src.engine.state_manager import StateManager
 from src.notifiers.base import BaseNotifier
-
 
 # ─────────────────────────────────────────────────────────
 # Docker Mock Infrastructure
@@ -417,7 +416,7 @@ def api_client() -> TestClient:
     mock_state.get_circuit_breaker_status = AsyncMock(return_value=[])
     mock_state.reset_circuit_breaker = AsyncMock()
     app_state.state_manager = mock_state
-    app_state.start_time = datetime.now(timezone.utc)
+    app_state.start_time = datetime.now(UTC)
 
     return TestClient(app)
 

@@ -16,7 +16,6 @@ from __future__ import annotations
 import asyncio
 import signal
 import sys
-from typing import NoReturn
 
 from src.actions.base import BaseAction
 from src.actions.restart import RestartAction, StopAction
@@ -31,7 +30,6 @@ from src.engine.state_manager import StateManager
 from src.notifiers.base import BaseNotifier, ConsoleNotifier
 from src.notifiers.discord import DiscordNotifier
 from src.notifiers.slack import SlackNotifier
-
 
 logger = get_logger()
 
@@ -189,7 +187,7 @@ class SentinelDaemon:
                     self._shutdown_event.wait(),
                     timeout=self._settings.poll_interval,
                 )
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 pass  # Normal: timeout means it's time for the next cycle
 
     def _handle_shutdown(self) -> None:

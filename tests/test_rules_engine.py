@@ -14,10 +14,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from src.collectors.docker_async import ContainerMetrics
-from src.core.config import RuleConfig
 from src.core.exceptions import CircuitBreakerOpen
-from src.engine.rules import RulesEngine
 
 
 class TestContainerMatching:
@@ -159,7 +156,9 @@ class TestRuleEvaluation:
 
         action_mock.execute.assert_not_called()
 
-    async def test_circuit_breaker_prevents_action(self, make_engine, make_rule, make_metrics) -> None:  # type: ignore[no-untyped-def]
+    async def test_circuit_breaker_prevents_action(  # type: ignore[no-untyped-def]
+        self, make_engine, make_rule, make_metrics,
+    ) -> None:
         """When circuit breaker is open, action should NOT execute."""
         engine, action_mock, sm_mock = make_engine([
             make_rule(threshold=80.0, sustained=0)
@@ -178,7 +177,9 @@ class TestRuleEvaluation:
         # But intervention should NOT be recorded either (breaker prevented it)
         sm_mock.record_intervention.assert_not_called()
 
-    async def test_multiple_containers_evaluated(self, make_engine, make_rule, make_metrics) -> None:  # type: ignore[no-untyped-def]
+    async def test_multiple_containers_evaluated(  # type: ignore[no-untyped-def]
+        self, make_engine, make_rule, make_metrics,
+    ) -> None:
         """All containers in the batch should be evaluated against the rules."""
         engine, action_mock, _ = make_engine([
             make_rule(threshold=80.0, sustained=0)

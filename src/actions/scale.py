@@ -69,7 +69,7 @@ class ScaleComposeAction(BaseAction):
                 component="actions.scale",
             )
 
-        except asyncio.TimeoutError:
+        except TimeoutError:
             raise ActionExecutionError(
                 f"Scaling service '{service_name}' timed out after {timeout}s"
             )

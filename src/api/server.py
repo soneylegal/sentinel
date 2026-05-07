@@ -9,7 +9,7 @@ spawning a separate process.
 from __future__ import annotations
 
 import asyncio
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import uvicorn
 from fastapi import FastAPI
@@ -104,7 +104,7 @@ class APIServer:
         if self._task:
             try:
                 await asyncio.wait_for(self._task, timeout=5.0)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 self._task.cancel()
 
         logger.info("Observability API stopped", component="api.server")

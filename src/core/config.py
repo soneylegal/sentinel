@@ -143,7 +143,7 @@ class ActionConfig(BaseModel):
     replicas: int | None = None  # For scale actions
 
     @model_validator(mode="after")
-    def validate_action_params(self) -> "ActionConfig":
+    def validate_action_params(self) -> ActionConfig:
         if self.type == ActionType.EXEC and not self.command:
             raise ValueError("Action type 'exec' requires a 'command' field")
         if self.type == ActionType.SCALE and self.replicas is None:

@@ -22,11 +22,9 @@ from src.core.config import (
     MatchConfig,
     NotifyConfig,
     RuleConfig,
-    RulesFile,
-    Severity,
     SentinelSettings,
+    Severity,
     load_rules,
-    load_settings,
 )
 from src.core.exceptions import ConfigurationError
 

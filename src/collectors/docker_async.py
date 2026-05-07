@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 import aiodocker
@@ -34,7 +34,7 @@ class ContainerMetrics:
     memory_usage_mb: float   # Current RSS in MiB
     memory_limit_mb: float   # Container memory limit in MiB
     pids: int
-    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    timestamp: datetime = field(default_factory=lambda: datetime.now(UTC))
 
 
 class DockerAsyncCollector:
@@ -109,7 +109,9 @@ class DockerAsyncCollector:
         )
         return metrics
 
-    async def _collect_single(self, container: aiodocker.docker.DockerContainer) -> ContainerMetrics | None:
+    async def _collect_single(
+        self, container: aiodocker.docker.DockerContainer,
+    ) -> ContainerMetrics | None:
         """Collect and normalize metrics for a single container."""
         try:
             info = await container.show()
@@ -148,7 +150,9 @@ class DockerAsyncCollector:
             )
             return None
 
-    async def _get_stats_snapshot(self, container: aiodocker.docker.DockerContainer) -> dict[str, Any] | None:
+    async def _get_stats_snapshot(
+        self, container: aiodocker.docker.DockerContainer,
+    ) -> dict[str, Any] | None:
         """Get a single stats snapshot (non-streaming)."""
         try:
             stats_stream = container.stats(stream=False)
@@ -175,7 +179,10 @@ class DockerAsyncCollector:
         cpu_delta = cpu_usage.get("total_usage", 0) - precpu_usage.get("total_usage", 0)
 
         # Linux: system_cpu_usage is available
-        system_delta = cpu_stats.get("system_cpu_usage", 0) - precpu_stats.get("system_cpu_usage", 0)
+        system_delta = (
+            cpu_stats.get("system_cpu_usage", 0)
+            - precpu_stats.get("system_cpu_usage", 0)
+        )
 
         if system_delta > 0 and cpu_delta > 0:
             num_cpus = cpu_stats.get("online_cpus", 0)
