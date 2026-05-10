@@ -159,7 +159,7 @@ class DockerAsyncCollector:
         """Get a single stats snapshot (non-streaming)."""
         try:
             stats_data = await container.stats(stream=False)
-            
+
             # aiodocker returns a list when stream=False
             if isinstance(stats_data, list) and len(stats_data) > 0:
                 result: dict[str, Any] = stats_data[0]
