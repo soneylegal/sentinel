@@ -158,13 +158,21 @@ class DockerAsyncCollector:
     ) -> dict[str, Any] | None:
         """Get a single stats snapshot (non-streaming)."""
         try:
-            stats_stream = container.stats(stream=False)
-            # aiodocker returns an async generator even with stream=False
-            # We need to get the first (and only) result
-            async for stats in stats_stream:  # type: ignore[attr-defined]
-                result: dict[str, Any] = stats
+            stats_data = await container.stats(stream=False)
+            
+            # aiodocker returns a list when stream=False
+            if isinstance(stats_data, list) and len(stats_data) > 0:
+                result: dict[str, Any] = stats_data[0]
                 return result
-        except Exception:
+            elif isinstance(stats_data, dict):
+                # Just in case it returns a dict directly in some versions
+                result: dict[str, Any] = stats_data
+                return result
+        except Exception as e:
+            logger.error(
+                f"Error getting stats for container: {e}",
+                component="collectors.docker_async",
+            )
             return None
         return None
 
