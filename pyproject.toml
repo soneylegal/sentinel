@@ -38,7 +38,7 @@ target-version = ["py311"]
 
 [project]
 name = "sentinel"
-version = "1.0.0"
+version = "1.0.1"
 description = "Docker Autonomous Orchestrator & Monitor"
 requires-python = ">=3.11"
 dependencies = [

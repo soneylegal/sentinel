@@ -33,7 +33,7 @@ def create_app() -> FastAPI:
             "Internal API for monitoring the Sentinel daemon's health, "
             "viewing intervention history, and managing circuit breakers."
         ),
-        version="1.0.0",
+        version="1.0.1",
         docs_url="/docs",
         redoc_url="/redoc",
     )

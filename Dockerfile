@@ -11,13 +11,13 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-# Install dependencies in a separate layer for caching
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
-# Copy application code
+# Em vez de requirements.txt, copiamos a configuração moderna do projeto
+COPY pyproject.toml README.md ./
 COPY src/ ./src/
 COPY rules.yaml .
+
+# Instala o projeto e as dependências listadas no pyproject.toml
+RUN pip install --no-cache-dir .
 
 # Create db directory
 RUN mkdir -p /app/db

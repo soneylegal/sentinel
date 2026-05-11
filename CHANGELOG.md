@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.1] - 2026-05-10
+
+### Fixed
+- **Docker Async Collector** — Resolução de `RuntimeWarning` crítico causado por uma corrotina não aguardada (`await`) na captura de métricas do Docker (`container.stats()`).
+
+### Changed
+- **Dependencies Management (PEP 621)** — Modernização completa do gerenciamento de dependências. Migração de `requirements.txt` para a seção `[project.dependencies]` e `[project.optional-dependencies]` no `pyproject.toml`.
+- **Docker Build** — Atualização do `Dockerfile` para instalar o Sentinel via `pip install .` ao invés de utilizar o `requirements.txt`.
+
+### CI/CD
+- **GitHub Actions Pipeline** — Otimização do fluxo de CI utilizando cache nativo do `setup-python` e instalação editável (`pip install -e ".[dev]"`) para refletir o ambiente correto e consistência de dependências.
+
 ## [1.0.0] - 2026-05-07
 
 ### Added

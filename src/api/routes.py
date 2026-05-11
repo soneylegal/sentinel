@@ -75,7 +75,7 @@ class _AppState:
         self.collector: Any = None
         self.state_manager: Any = None
         self.start_time: datetime = datetime.now(UTC)
-        self.version: str = "1.0.0"
+        self.version: str = "1.0.1"
 
 
 app_state = _AppState()
