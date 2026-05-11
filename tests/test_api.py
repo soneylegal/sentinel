@@ -71,8 +71,8 @@ class TestHealthEndpoint:
         assert len(parts) == 3
         assert all(p.isdigit() for p in parts)
 
-    def test_version_matches_1_0_0(self, api_client: TestClient) -> None:
-        assert api_client.get("/health").json()["version"] == "1.0.0"
+    def test_version_matches_app_version(self, api_client: TestClient) -> None:
+        assert api_client.get("/health").json()["version"] == app_state.version
 
     def test_uptime_is_non_negative(self, api_client: TestClient) -> None:
         uptime = api_client.get("/health").json()["uptime_seconds"]
@@ -346,7 +346,7 @@ class TestAPIDocumentation:
 
     def test_openapi_version(self, api_client: TestClient) -> None:
         schema = api_client.get("/openapi.json").json()
-        assert schema["info"]["version"] == "1.0.0"
+        assert schema["info"]["version"] == app_state.version
 
     def test_openapi_lists_all_paths(self, api_client: TestClient) -> None:
         """All 4 endpoints must appear in the OpenAPI schema."""
