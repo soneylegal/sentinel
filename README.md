@@ -23,6 +23,7 @@
 ## 📋 Índice
 
 - [Visão Geral](#-visão-geral)
+- [Quick Start (Apenas Docker)](#-quick-start-apenas-docker)
 - [Stack Tecnológico](#-stack-tecnológico)
 - [Arquitetura](#-arquitetura)
 - [Design Patterns](#-design-patterns)
@@ -189,6 +190,23 @@ sentinel/
 
 ---
 
+## ⚡ Quick Start (Apenas Docker)
+
+Para rodar o Sentinel diretamente sem precisar clonar o repositório ou instalar dependências locais, utilize a nossa imagem pública hospedada no GitHub Container Registry:
+
+```bash
+docker run -d \
+  --name sentinel \
+  --user root \
+  --restart unless-stopped \
+  -v /var/run/docker.sock:/var/run/docker.sock:ro \
+  ghcr.io/soneylegal/sentinel:latest
+```
+
+> **Nota:** Ao montar o `docker.sock`, o Sentinel ganha visibilidade global para orquestrar todos os containers do host, independentemente do diretório de onde é executado.
+
+---
+
 ## 🚀 Instalação
 
 ### Pré-requisitos
@@ -208,8 +226,8 @@ cd sentinel
 python3 -m venv .venv
 source .venv/bin/activate
 
-# Instalar dependências
-pip install -r requirements.txt
+# Instalar projeto e dependências (modo editável)
+pip install -e ".[dev]"
 
 # Copiar e editar configuração
 cp .env.example .env
