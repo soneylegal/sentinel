@@ -34,8 +34,7 @@ class RestartAction(BaseAction):
         try:
             container = await self._get_container(container_id)
             logger.warning(
-                f"Restarting container '{container_name}' (id={container_id}, "
-                f"timeout={timeout}s)",
+                f"Restarting container '{container_name}' (id={container_id}, timeout={timeout}s)",
                 component="actions.restart",
             )
             await container.restart(timeout=timeout)
@@ -67,8 +66,7 @@ class StopAction(BaseAction):
         try:
             container = await self._get_container(container_id)
             logger.warning(
-                f"Stopping container '{container_name}' (id={container_id}, "
-                f"timeout={timeout}s)",
+                f"Stopping container '{container_name}' (id={container_id}, timeout={timeout}s)",
                 component="actions.restart",
             )
             await container.stop(t=timeout)

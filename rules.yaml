@@ -75,3 +75,23 @@ rules:
       channels:
         - console
       severity: critical
+
+  - name: "Restarting Container Watchdog"
+    description: "Restart containers stuck in a restarting loop"
+    enabled: true
+    match:
+      container_name_pattern: ".*"
+      exclude_patterns:
+        - "^sentinel$"
+    condition:
+      metric: status
+      operator: "=="
+      threshold: "restarting"
+      sustained_seconds: 30
+    action:
+      type: restart
+      timeout: 30
+    notify:
+      channels:
+        - console
+      severity: critical

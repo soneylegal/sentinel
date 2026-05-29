@@ -131,7 +131,7 @@ class ConditionConfig(BaseModel):
     @field_validator("metric")
     @classmethod
     def validate_metric(cls, v: str) -> str:
-        allowed = {"cpu_percent", "memory_percent", "memory_usage_mb", "health_status"}
+        allowed = {"cpu_percent", "memory_percent", "memory_usage_mb", "health_status", "status"}
         if v not in allowed:
             raise ValueError(f"metric must be one of {allowed}, got '{v}'")
         return v

@@ -167,6 +167,7 @@ class RulesEngine:
             "memory_percent": metrics.memory_percent,
             "memory_usage_mb": metrics.memory_usage_mb,
             "health_status": metrics.health_status,
+            "status": metrics.status,
         }
         return mapping.get(metric, 0.0)
 
@@ -205,7 +206,7 @@ class RulesEngine:
             return
 
         logger.warning(
-            f"Executing action '{action_type}' on '{container_name}' " f"(rule='{rule.name}')",
+            f"Executing action '{action_type}' on '{container_name}' (rule='{rule.name}')",
             component="engine.rules",
         )
 

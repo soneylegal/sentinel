@@ -206,3 +206,21 @@ class TestRuleEvaluation:
         # Second cycle: condition resolves
         await engine.evaluate([make_metrics(cpu_percent=50.0)])
         assert len(engine._violations) == 0
+
+
+class TestLifecycleStatus:
+    """Test status condition comparison logic."""
+
+    def test_status_comparison_matching(self, make_engine, make_rule, make_metrics) -> None:  # type: ignore[no-untyped-def]
+        engine, _, _ = make_engine(
+            [make_rule(metric="status", operator="==", threshold="restarting")]
+        )
+        metrics = make_metrics(status="restarting")
+        assert engine._condition_met(engine._rules[0], metrics)
+
+    def test_status_comparison_no_match(self, make_engine, make_rule, make_metrics) -> None:  # type: ignore[no-untyped-def]
+        engine, _, _ = make_engine(
+            [make_rule(metric="status", operator="==", threshold="restarting")]
+        )
+        metrics = make_metrics(status="running")
+        assert not engine._condition_met(engine._rules[0], metrics)
