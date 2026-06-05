@@ -10,7 +10,7 @@ make_engine) to avoid duplicating mock setup.
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -224,3 +224,64 @@ class TestLifecycleStatus:
         )
         metrics = make_metrics(status="running")
         assert not engine._condition_met(engine._rules[0], metrics)
+
+
+class TestMetricSmoothing:
+    """Test sliding window average and metrics smoothing logic."""
+
+    @patch("time.monotonic")
+    async def test_sliding_window_average_keeps_violation_active(
+        self, mock_mono, make_engine, make_rule, make_metrics
+    ) -> None:  # type: ignore[no-untyped-def]
+        engine, _, _ = make_engine(
+            [make_rule(metric="cpu_percent", operator=">", threshold=80.0, sustained=60)]
+        )
+
+        # 1. First poll at t=100: CPU=95.0. Average=95.0.
+        mock_mono.return_value = 100.0
+        await engine.evaluate([make_metrics(cpu_percent=95.0)])
+        assert len(engine._violations) == 1
+
+        # 2. Second poll at t=115: CPU=70.0. Average=(95+70)/2 = 82.5 > 80.0.
+        # Instantaneous value (70.0) is below threshold, but smoothed average is above.
+        # Tracker should NOT be cleared!
+        mock_mono.return_value = 115.0
+        await engine.evaluate([make_metrics(cpu_percent=70.0)])
+        assert len(engine._violations) == 1
+
+        # 3. Third poll at t=130: CPU=75.0. Average=(95+70+75)/3 = 80.0.
+        # Average is no longer > 80.0, so the violation is now cleared.
+        mock_mono.return_value = 130.0
+        await engine.evaluate([make_metrics(cpu_percent=75.0)])
+        assert len(engine._violations) == 0
+
+    @patch("time.monotonic")
+    async def test_sliding_window_prunes_expired_metrics(
+        self, mock_mono, make_engine, make_rule, make_metrics
+    ) -> None:  # type: ignore[no-untyped-def]
+        # Rule with sustained=30 seconds
+        engine, _, _ = make_engine(
+            [make_rule(metric="cpu_percent", operator=">", threshold=80.0, sustained=30)]
+        )
+        key = ("test-container", "cpu_percent")
+
+        # Poll 1 at t=100: CPU=100.0
+        mock_mono.return_value = 100.0
+        await engine.evaluate([make_metrics(container_name="test-container", cpu_percent=100.0)])
+        assert len(engine._metrics_history[key]) == 1
+
+        # Poll 2 at t=115: CPU=90.0 (still within 30s window from t=100)
+        mock_mono.return_value = 115.0
+        await engine.evaluate([make_metrics(container_name="test-container", cpu_percent=90.0)])
+        assert len(engine._metrics_history[key]) == 2
+
+        # Poll 3 at t=140: CPU=70.0 (t=100 is 40s ago, so it is > 30s
+        # sustained window and must be pruned)
+        # Remaining: t=115 (90.0) and t=140 (70.0). Average = 80.0.
+        mock_mono.return_value = 140.0
+        await engine.evaluate([make_metrics(container_name="test-container", cpu_percent=70.0)])
+
+        # Verify t=100 got pruned, history length is 2 (t=115 and t=140)
+        assert len(engine._metrics_history[key]) == 2
+        # Average is 80.0, which is not > 80.0, so violation should be cleared
+        assert len(engine._violations) == 0
