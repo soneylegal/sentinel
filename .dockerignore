@@ -1,0 +1,11 @@
+.git
+.github
+.venv
+.pytest_cache
+.ruff_cache
+.mypy_cache
+*.db
+db/
+tests/
+sentinel.egg-info
+sentinel_release_sdd.md
