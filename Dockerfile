@@ -1,23 +1,42 @@
 # ─────────────────────────────────────────────────────────
 # Sentinel - Production Dockerfile
-# Multi-stage build for minimal image size
+# Multi-stage build for optimized dependency caching
 # ─────────────────────────────────────────────────────────
 
+# --- Stage 1: Dependencies Builder ---
+FROM python:3.11-slim AS builder
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
+WORKDIR /app
+
+# Copy configuration files
+COPY pyproject.toml README.md ./
+
+# Create dummy package structure to satisfy setup tools during dependency install
+RUN mkdir src && touch src/__init__.py
+
+# Install production dependencies
+RUN pip install --no-cache-dir .
+
+# --- Stage 2: Final Runtime ---
 FROM python:3.11-slim AS base
 
-# Prevent Python from writing .pyc files and buffering stdout/stderr
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
 WORKDIR /app
 
-# Em vez de requirements.txt, copiamos a configuração moderna do projeto
-COPY pyproject.toml README.md ./
+# Copy installed dependencies from builder stage
+COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
+COPY --from=builder /usr/local/bin /usr/local/bin
+
+# Copy application source code and rules config
 COPY src/ ./src/
 COPY rules.yaml .
-
-# Instala o projeto e as dependências listadas no pyproject.toml
-RUN pip install --no-cache-dir .
 
 # Create db directory
 RUN mkdir -p /app/db

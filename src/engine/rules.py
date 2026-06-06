@@ -35,8 +35,8 @@ class ViolationTracker:
     must persist for a minimum duration before triggering an action.
     """
 
-    first_seen: float = field(default_factory=time.monotonic)
-    last_seen: float = field(default_factory=time.monotonic)
+    first_seen: float = field(default_factory=lambda: time.monotonic())
+    last_seen: float = field(default_factory=lambda: time.monotonic())
 
     @property
     def duration_seconds(self) -> float:
@@ -72,6 +72,9 @@ class RulesEngine:
 
         # Violation tracking: (container_name, rule_name) -> ViolationTracker
         self._violations: dict[tuple[str, str], ViolationTracker] = {}
+
+        # Metrics history tracking: (container_name, metric_name) -> list of (timestamp, value)
+        self._metrics_history: dict[tuple[str, str], list[tuple[float, float]]] = {}
 
         logger.info(
             f"Rules engine initialized with {len(self._rules)} active rules",
@@ -142,9 +145,27 @@ class RulesEngine:
         if isinstance(threshold, str):
             return str(metric_value) == threshold
 
-        op = rule.condition.operator
-        value = float(metric_value)
+        # Handle numeric smoothing / sliding window average
+        metric_name = rule.condition.metric
+        key = (metrics.container_name, metric_name)
+        now = time.monotonic()
+
+        if key not in self._metrics_history:
+            self._metrics_history[key] = []
+
+        history = self._metrics_history[key]
+        history.append((now, float(metric_value)))
+
+        # Prune readings older than now - sustained_seconds
+        cutoff = now - rule.condition.sustained_seconds
+        # Keep at least the latest reading to avoid an empty list
+        while len(history) > 1 and history[0][0] < cutoff:
+            history.pop(0)
+
+        # Compute average value in the sliding window
+        value = sum(val for _, val in history) / len(history)
         thresh = float(threshold)
+        op = rule.condition.operator
 
         if op == ConditionOperator.GT:
             return value > thresh
