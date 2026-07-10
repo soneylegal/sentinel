@@ -43,6 +43,7 @@ rules:
       container_name_pattern: ".*"
       exclude_patterns:
         - "^sentinel$"
+        - "^traefik.*"                # Never touch the reverse proxy
     condition:
       metric: memory_percent
       operator: ">"
@@ -54,6 +55,7 @@ rules:
     notify:
       channels:
         - console
+        - discord
       severity: warning
 
   - name: "Unhealthy Container Watchdog"
@@ -63,6 +65,7 @@ rules:
       container_name_pattern: ".*"
       exclude_patterns:
         - "^sentinel$"
+        - "^traefik.*"                # Never touch the reverse proxy
     condition:
       metric: health_status
       operator: "=="
@@ -74,6 +77,7 @@ rules:
     notify:
       channels:
         - console
+        - discord
       severity: critical
 
   - name: "Restarting Container Watchdog"
@@ -83,6 +87,7 @@ rules:
       container_name_pattern: ".*"
       exclude_patterns:
         - "^sentinel$"
+        - "^traefik.*"                # Never touch the reverse proxy
     condition:
       metric: status
       operator: "=="
@@ -94,4 +99,5 @@ rules:
     notify:
       channels:
         - console
+        - discord
       severity: critical
