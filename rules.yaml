@@ -4,9 +4,9 @@
 # Each rule defines a condition and the autonomous action
 # that Sentinel will take when the condition is met.
 #
-# Supported metrics: cpu_percent, memory_percent, memory_usage_mb
+# Supported metrics: cpu_percent, memory_percent, memory_usage_mb, health_status, status, exit_code
 # Supported operators: ">", "<", ">=", "<=", "=="
-# Supported actions: restart, stop, scale, exec
+# Supported actions: restart, stop, start, scale, exec
 # ─────────────────────────────────────────────────────────
 
 global:
@@ -95,6 +95,29 @@ rules:
       sustained_seconds: 30
     action:
       type: restart
+      timeout: 30
+    notify:
+      channels:
+        - console
+        - discord
+      severity: critical
+
+  - name: "Exited Container Recovery"
+    description: "Start containers that exited with abnormal codes (1=error, 137=OOM/kill, 255=unknown)"
+    enabled: true
+    match:
+      container_name_pattern: ".*"
+      exclude_patterns:
+        - "^sentinel$"
+        - "^traefik.*"                # Never touch the reverse proxy
+    condition:
+      metric: exit_code
+      operator: "=="
+      threshold: "allowlist"          # Evaluated against exit_code_allowlist, not a fixed value
+      exit_code_allowlist: [1, 137, 255]
+      sustained_seconds: 0            # Immediate — container is already dead
+    action:
+      type: start
       timeout: 30
     notify:
       channels:

@@ -21,7 +21,7 @@ from fastapi.testclient import TestClient
 from src.actions.base import BaseAction
 from src.api.routes import app_state
 from src.api.server import create_app
-from src.collectors.docker_async import ContainerMetrics
+from src.collectors.docker_async import ContainerMetrics, ExitedContainerInfo
 from src.core.config import (
     ActionConfig,
     ActionType,
@@ -307,6 +307,15 @@ def mock_notifier() -> AsyncMock:
 
 
 @pytest.fixture
+def mock_start_action() -> AsyncMock:
+    """A mocked StartAction with a tracked execute() method."""
+    action = AsyncMock(spec=BaseAction)
+    action.execute = AsyncMock()
+    action.action_type = "start"
+    return action
+
+
+@pytest.fixture
 def mock_state_manager() -> AsyncMock:
     """A fully mocked StateManager (no SQLite, pure mock).
 
@@ -368,7 +377,7 @@ def make_engine(mock_action, mock_notifier, mock_state_manager):  # type: ignore
         engine = RulesEngine(
             rules=rules or [default_rule],
             state_manager=sm,
-            actions={"restart": act, "stop": act, "scale": act},
+            actions={"restart": act, "stop": act, "start": act, "scale": act},
             notifiers={"console": ntf},
         )
         return engine, act, sm
@@ -468,3 +477,40 @@ rules:
     path = tmp_path / "rules.yaml"
     path.write_text(content, encoding="utf-8")
     return str(path)
+
+
+# ─────────────────────────────────────────────────────────
+# ExitedContainerInfo Factory
+# ─────────────────────────────────────────────────────────
+
+
+@pytest.fixture
+def make_exited_info():  # type: ignore[no-untyped-def]
+    """Factory fixture to create ExitedContainerInfo instances.
+
+    Usage::
+
+        def test_something(make_exited_info):
+            info = make_exited_info(exit_code=137, container_name="redis")
+    """
+
+    def _factory(
+        container_id: str = "abc123def456",
+        container_name: str = "webapp",
+        image: str = "nginx:latest",
+        exit_code: int = 137,
+        finished_at: str = "2026-07-10T15:30:00Z",
+        restart_policy: str = "unless-stopped",
+        last_logs: str = "Error: connection refused\nSegfault at 0x0000\nProcess exited",
+    ) -> ExitedContainerInfo:
+        return ExitedContainerInfo(
+            container_id=container_id,
+            container_name=container_name,
+            image=image,
+            exit_code=exit_code,
+            finished_at=finished_at,
+            restart_policy=restart_policy,
+            last_logs=last_logs,
+        )
+
+    return _factory

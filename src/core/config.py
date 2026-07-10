@@ -82,6 +82,7 @@ class Severity(str, Enum):
 class ActionType(str, Enum):
     RESTART = "restart"
     STOP = "stop"
+    START = "start"
     SCALE = "scale"
     EXEC = "exec"
 
@@ -125,13 +126,20 @@ class ConditionConfig(BaseModel):
 
     metric: str
     operator: ConditionOperator
-    threshold: float | str  # str for health_status checks
+    threshold: float | str  # str for health_status and exit_code checks
     sustained_seconds: int = Field(default=0, ge=0)
+    exit_code_allowlist: list[int] = Field(
+        default_factory=lambda: [1, 137, 255],
+        description="Exit codes that trigger auto-recovery. Only used when metric is 'exit_code'.",
+    )
 
     @field_validator("metric")
     @classmethod
     def validate_metric(cls, v: str) -> str:
-        allowed = {"cpu_percent", "memory_percent", "memory_usage_mb", "health_status", "status"}
+        allowed = {
+            "cpu_percent", "memory_percent", "memory_usage_mb",
+            "health_status", "status", "exit_code",
+        }
         if v not in allowed:
             raise ValueError(f"metric must be one of {allowed}, got '{v}'")
         return v
