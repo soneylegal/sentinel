@@ -272,7 +272,7 @@ class TestCircuitBreakerExceptionDetail:
 # ═════════════════════════════════════════════════════════
 @pytest.mark.asyncio
 class TestCircuitBreakerActionTypes:
-    """Only restart and stop count toward the breaker. Scale does not."""
+    """restart, stop, and start count toward the breaker. Scale and exec do not."""
 
     async def test_stop_actions_count(self, state_manager: StateManager) -> None:
         """Mixed restart+stop should accumulate toward threshold."""
@@ -528,7 +528,11 @@ class TestCircuitBreakerStatePersistence:
         assert status[0]["last_tripped"] is not None
 
     async def test_trip_count_increments(self, state_manager: StateManager) -> None:
-        """Each trip should increment trip_count."""
+        """trip_count is set when the breaker first trips via the sliding
+        window (Phase 2). Once latched open, subsequent checks hit Phase 1
+        (the is_open flag) and do NOT increment trip_count — the counter
+        reflects how many times the breaker was tripped via the window,
+        not how many times it was checked."""
         for _ in range(3):
             await state_manager.record_intervention(
                 container_id="c1",
@@ -537,19 +541,19 @@ class TestCircuitBreakerStatePersistence:
                 action_type="restart",
             )
 
-        # Trip once
+        # Trip once — sets trip_count via Phase 2
         with pytest.raises(CircuitBreakerOpen):
             await state_manager.check_circuit_breaker("webapp")
         s1 = await state_manager.get_circuit_breaker_status()
         count_1 = s1[0]["trip_count"]
+        assert count_1 >= 1
 
-        # Trip again (same history still in window)
+        # Second check hits Phase 1 (latched) — trip_count stays the same
         with pytest.raises(CircuitBreakerOpen):
             await state_manager.check_circuit_breaker("webapp")
         s2 = await state_manager.get_circuit_breaker_status()
         count_2 = s2[0]["trip_count"]
-
-        assert count_2 > count_1
+        assert count_2 == count_1
 
     async def test_multiple_containers_in_status(self, state_manager: StateManager) -> None:
         """Status should list all containers that have been tripped."""
@@ -663,3 +667,123 @@ class TestCrashLoopSimulation:
         for _ in range(20):
             with pytest.raises(CircuitBreakerOpen):
                 await state_manager_strict.check_circuit_breaker("fragile-app")
+
+
+# ═════════════════════════════════════════════════════════
+# Circuit Breaker — Latch Behavior (is_open persistence)
+# ═════════════════════════════════════════════════════════
+@pytest.mark.asyncio
+class TestCircuitBreakerLatch:
+    """Test that the CB stays permanently open once tripped.
+
+    This validates the fix for the sliding-window bug where the CB
+    would auto-close after the window expired.
+    """
+
+    async def test_cb_stays_open_after_trip(self, state_manager: StateManager) -> None:
+        """Once tripped, subsequent checks must raise even without
+        new interventions in the window."""
+        for _ in range(3):
+            await state_manager.record_intervention(
+                container_id="c1",
+                container_name="webapp",
+                rule_name="rule",
+                action_type="restart",
+            )
+        # Trip the breaker
+        with pytest.raises(CircuitBreakerOpen):
+            await state_manager.check_circuit_breaker("webapp")
+
+        # The breaker should remain open on repeated checks
+        # (previously it would close when the sliding window moved)
+        for _ in range(10):
+            with pytest.raises(CircuitBreakerOpen):
+                await state_manager.check_circuit_breaker("webapp")
+
+    async def test_cb_is_open_flag_checked_first(self, state_manager: StateManager) -> None:
+        """The is_open flag in circuit_breaker_state must be checked
+        before counting interventions in the sliding window."""
+        for _ in range(3):
+            await state_manager.record_intervention(
+                container_id="c1",
+                container_name="webapp",
+                rule_name="rule",
+                action_type="restart",
+            )
+        with pytest.raises(CircuitBreakerOpen):
+            await state_manager.check_circuit_breaker("webapp")
+
+        # Verify the is_open flag is set
+        status = await state_manager.get_circuit_breaker_status()
+        entry = [s for s in status if s["container_name"] == "webapp"]
+        assert len(entry) == 1
+        assert entry[0]["is_open"] is True
+
+        # Now check again — should still be open due to the flag
+        with pytest.raises(CircuitBreakerOpen):
+            await state_manager.check_circuit_breaker("webapp")
+
+    async def test_reset_clears_latch_and_allows_new_cycle(
+        self, state_manager: StateManager
+    ) -> None:
+        """After manual reset, the breaker should re-evaluate from
+        the sliding window (not stay latched open forever)."""
+        for _ in range(3):
+            await state_manager.record_intervention(
+                container_id="c1",
+                container_name="webapp",
+                rule_name="rule",
+                action_type="restart",
+            )
+        with pytest.raises(CircuitBreakerOpen):
+            await state_manager.check_circuit_breaker("webapp")
+
+        # Reset the breaker
+        await state_manager.reset_circuit_breaker("webapp")
+
+        # Verify is_open is cleared
+        status = await state_manager.get_circuit_breaker_status()
+        entry = [s for s in status if s["container_name"] == "webapp"]
+        if entry:
+            assert entry[0]["is_open"] is False
+
+    async def test_start_actions_count_toward_threshold(
+        self, state_manager: StateManager
+    ) -> None:
+        """'start' actions (for exited containers) should count
+        toward the circuit breaker threshold."""
+        for _ in range(3):
+            await state_manager.record_intervention(
+                container_id="c1",
+                container_name="exited-app",
+                rule_name="Exited Recovery",
+                action_type="start",
+            )
+        with pytest.raises(CircuitBreakerOpen):
+            await state_manager.check_circuit_breaker("exited-app")
+
+    async def test_mixed_start_and_restart_accumulate(
+        self, state_manager: StateManager
+    ) -> None:
+        """Mixed restart + start actions should accumulate."""
+        await state_manager.record_intervention(
+            container_id="c1",
+            container_name="webapp",
+            rule_name="rule",
+            action_type="restart",
+        )
+        await state_manager.record_intervention(
+            container_id="c1",
+            container_name="webapp",
+            rule_name="rule",
+            action_type="start",
+        )
+        await state_manager.record_intervention(
+            container_id="c1",
+            container_name="webapp",
+            rule_name="rule",
+            action_type="stop",
+        )
+        # 1 restart + 1 start + 1 stop = 3 counting actions → trips
+        with pytest.raises(CircuitBreakerOpen):
+            await state_manager.check_circuit_breaker("webapp")

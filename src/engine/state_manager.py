@@ -96,20 +96,44 @@ class StateManager:
     async def check_circuit_breaker(self, container_name: str) -> None:
         """Check if the circuit breaker is open for a container.
 
+        Two-phase check:
+        1. If the breaker has already been latched open (is_open=1),
+           it stays open until manually reset via the API.
+        2. Otherwise, count recent interventions in the sliding window
+           to detect new crash loops.
+
         Raises:
             CircuitBreakerOpen: If the container has exceeded the restart
-                threshold within the configured time window.
+                threshold within the configured time window, or if the
+                breaker was previously latched open.
         """
         assert self._db is not None, "StateManager not initialized"
 
         async with self._lock:
+            # Phase 1: Check if the breaker is already latched open.
+            # Once tripped, it stays open until a human calls
+            # reset_circuit_breaker() via the API.
+            cursor = await self._db.execute(
+                "SELECT is_open FROM circuit_breaker_state WHERE container_name = ?",
+                (container_name,),
+            )
+            row = await cursor.fetchone()
+            if row and row[0]:
+                raise CircuitBreakerOpen(
+                    container_name=container_name,
+                    restart_count=self._threshold,
+                    window_minutes=self._window_minutes,
+                )
+
+            # Phase 2: Count recent interventions in the sliding window
+            # to detect the FIRST crash loop occurrence.
             cursor = await self._db.execute(
                 """
                 SELECT COUNT(*) as cnt
                 FROM intervention_history
                 WHERE container_name = ?
                   AND created_at > datetime('now', ?)
-                  AND action_type IN ('restart', 'stop')
+                  AND action_type IN ('restart', 'stop', 'start')
                 """,
                 (container_name, f"-{self._window_minutes} minutes"),
             )
@@ -117,7 +141,8 @@ class StateManager:
             count = row[0] if row else 0
 
             if count >= self._threshold:
-                # Update circuit breaker state
+                # Latch the breaker open — it will NOT auto-close
+                # when the sliding window moves past.
                 await self._db.execute(
                     """
                     INSERT INTO circuit_breaker_state
