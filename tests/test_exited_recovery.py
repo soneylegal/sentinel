@@ -18,7 +18,6 @@ from unittest.mock import AsyncMock
 import pytest
 
 from src.actions.start import StartAction
-from src.collectors.docker_async import ExitedContainerInfo
 from src.core.config import (
     ActionConfig,
     ActionType,
@@ -31,7 +30,6 @@ from src.core.config import (
 )
 from src.core.exceptions import ActionExecutionError, CircuitBreakerOpen
 from src.engine.rules import RulesEngine
-
 
 # ─────────────────────────────────────────────────────────
 # ExitedContainerInfo Dataclass
@@ -85,7 +83,9 @@ class TestStartAction:
         mock_docker_container.start.assert_awaited_once()
 
     @pytest.mark.asyncio
-    async def test_start_failure_raises_action_error(self, mock_docker_client, mock_docker_container):
+    async def test_start_failure_raises_action_error(
+        self, mock_docker_client, mock_docker_container
+    ):
         mock_docker_container.start = AsyncMock(side_effect=Exception("container locked"))
         action = StartAction(mock_docker_client)
         with pytest.raises(ActionExecutionError, match="Failed to start"):

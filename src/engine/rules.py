@@ -215,9 +215,10 @@ class RulesEngine:
             # Fetch container logs for the notification
             logs = "(collector not available)"
             if self._collector:
-                logs = await self._collector.get_container_logs(
+                raw_logs = await self._collector.get_container_logs(
                     metrics.container_id, tail=50
                 )
+                logs = raw_logs[-1500:] if len(raw_logs) > 1500 else raw_logs
 
             await self._notify_all(
                 rule,
@@ -317,7 +318,14 @@ class RulesEngine:
                 )
 
         if tasks:
-            await asyncio.gather(*tasks, return_exceptions=True)
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            for res in results:
+                if isinstance(res, Exception):
+                    logger.error(
+                        f"Notifier failed to send notification: {res}",
+                        component="engine.rules",
+                        exc_info=res,
+                    )
 
     # ─────────────────────────────────────────────────────────
     # Exited Container Evaluation
@@ -381,7 +389,11 @@ class RulesEngine:
                 component="engine.rules",
             )
             # Include last logs in the Circuit Breaker notification
-            log_snippet = exited.last_logs[-1500:] if len(exited.last_logs) > 1500 else exited.last_logs
+            log_snippet = (
+                exited.last_logs[-1500:]
+                if len(exited.last_logs) > 1500
+                else exited.last_logs
+            )
             await self._notify_all_by_name(
                 rule,
                 container_name=container_name,
@@ -491,4 +503,11 @@ class RulesEngine:
                 )
 
         if tasks:
-            await asyncio.gather(*tasks, return_exceptions=True)
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            for res in results:
+                if isinstance(res, Exception):
+                    logger.error(
+                        f"Notifier failed to send notification: {res}",
+                        component="engine.rules",
+                        exc_info=res,
+                    )

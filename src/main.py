@@ -19,8 +19,8 @@ import sys
 
 from src.actions.base import BaseAction
 from src.actions.restart import RestartAction, StopAction
-from src.actions.start import StartAction
 from src.actions.scale import ScaleComposeAction
+from src.actions.start import StartAction
 from src.api.server import APIServer
 from src.collectors.docker_async import DockerAsyncCollector
 from src.core.config import SentinelSettings, load_rules, load_settings
