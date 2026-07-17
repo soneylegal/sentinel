@@ -30,6 +30,11 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
+# Install gosu for secure privilege dropping in entrypoint
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends gosu && \
+    rm -rf /var/lib/apt/lists/*
+
 # Copy installed dependencies from builder stage
 COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
 COPY --from=builder /usr/local/bin /usr/local/bin
@@ -41,12 +46,14 @@ COPY rules.yaml .
 # Create db directory
 RUN mkdir -p /app/db
 
-# Non-root user for security
+# Non-root user for security (entrypoint drops to this user)
 RUN groupadd --gid 1000 sentinel && \
     useradd --uid 1000 --gid sentinel --shell /bin/bash sentinel && \
     chown -R sentinel:sentinel /app
 
-USER sentinel
+# Copy and set entrypoint (auto-detects Docker socket GID)
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
 
 EXPOSE 9120
 
@@ -54,4 +61,4 @@ EXPOSE 9120
 HEALTHCHECK --interval=30s --timeout=10s --retries=3 --start-period=10s \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:9120/health')" || exit 1
 
-ENTRYPOINT ["python", "-m", "src.main"]
+ENTRYPOINT ["/entrypoint.sh"]

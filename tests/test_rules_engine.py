@@ -285,3 +285,62 @@ class TestMetricSmoothing:
         assert len(engine._metrics_history[key]) == 2
         # Average is 80.0, which is not > 80.0, so violation should be cleared
         assert len(engine._violations) == 0
+
+
+# ═════════════════════════════════════════════════════════
+# Circuit Breaker — Logs in Notification
+# ═════════════════════════════════════════════════════════
+@pytest.mark.asyncio
+class TestCircuitBreakerNotificationLogs:
+    """Test that CB trip notifications include container logs."""
+
+    async def test_cb_trip_fetches_and_includes_logs(  # type: ignore[no-untyped-def]
+        self,
+        make_engine,
+        make_rule,
+        make_metrics,
+        mock_collector,
+    ) -> None:
+        """When the CB trips, the notification must include the container's
+        last logs fetched from the collector."""
+        engine, action_mock, sm_mock = make_engine([make_rule(threshold=80.0, sustained=0)])
+
+        # Simulate an open circuit breaker
+        sm_mock.check_circuit_breaker = AsyncMock(side_effect=CircuitBreakerOpen("webapp", 5, 5))
+
+        metrics = [make_metrics(cpu_percent=95.0)]
+        await engine.evaluate(metrics)
+
+        # Collector should have been called to fetch logs
+        mock_collector.get_container_logs.assert_called_once_with(
+            "abc123def456", tail=50
+        )
+
+        # Action must NOT have been called (breaker prevented it)
+        action_mock.execute.assert_not_called()
+
+    async def test_cb_trip_notification_contains_log_text(  # type: ignore[no-untyped-def]
+        self,
+        make_engine,
+        make_rule,
+        make_metrics,
+        mock_notifier,
+        mock_collector,
+    ) -> None:
+        """The notification message must contain the actual log lines."""
+        engine, _, sm_mock = make_engine([make_rule(threshold=80.0, sustained=0)])
+        sm_mock.check_circuit_breaker = AsyncMock(side_effect=CircuitBreakerOpen("webapp", 5, 5))
+
+        mock_collector.get_container_logs = AsyncMock(
+            return_value="FATAL: out of memory\nKilled process 1234"
+        )
+
+        await engine.evaluate([make_metrics(cpu_percent=95.0)])
+
+        # Verify the notifier received a message containing the logs
+        mock_notifier.send.assert_called()
+        call_kwargs = mock_notifier.send.call_args
+        message = call_kwargs.kwargs.get("message", "") or call_kwargs[1].get("message", "")
+        assert "FATAL: out of memory" in message
+        assert "Killed process 1234" in message
+        assert "Últimos Logs" in message

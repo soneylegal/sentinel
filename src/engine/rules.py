@@ -20,7 +20,11 @@ from src.core.logger import get_logger
 
 if TYPE_CHECKING:
     from src.actions.base import BaseAction
-    from src.collectors.docker_async import ContainerMetrics
+    from src.collectors.docker_async import (
+        ContainerMetrics,
+        DockerAsyncCollector,
+        ExitedContainerInfo,
+    )
     from src.engine.state_manager import StateManager
     from src.notifiers.base import BaseNotifier
 
@@ -64,11 +68,13 @@ class RulesEngine:
         state_manager: StateManager,
         actions: dict[str, BaseAction],
         notifiers: dict[str, BaseNotifier],
+        collector: DockerAsyncCollector | None = None,
     ) -> None:
         self._rules = [r for r in rules if r.enabled]
         self._state_manager = state_manager
         self._actions = actions
         self._notifiers = notifiers
+        self._collector = collector
 
         # Violation tracking: (container_name, rule_name) -> ViolationTracker
         self._violations: dict[tuple[str, str], ViolationTracker] = {}
@@ -205,6 +211,15 @@ class RulesEngine:
                 f"Circuit breaker OPEN: {e}",
                 component="engine.rules",
             )
+
+            # Fetch container logs for the notification
+            logs = "(collector not available)"
+            if self._collector:
+                raw_logs = await self._collector.get_container_logs(
+                    metrics.container_id, tail=50
+                )
+                logs = raw_logs[-1500:] if len(raw_logs) > 1500 else raw_logs
+
             await self._notify_all(
                 rule,
                 metrics,
@@ -212,6 +227,7 @@ class RulesEngine:
                 message=(
                     f"Container '{container_name}' has been restarted too many times. "
                     f"Autonomous action SUSPENDED. Human intervention required."
+                    f"\n\n──── Últimos Logs ────\n```\n{logs}\n```"
                 ),
                 severity=Severity.CRITICAL,
             )
@@ -302,4 +318,196 @@ class RulesEngine:
                 )
 
         if tasks:
-            await asyncio.gather(*tasks, return_exceptions=True)
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            for res in results:
+                if isinstance(res, Exception):
+                    logger.error(
+                        f"Notifier failed to send notification: {res}",
+                        component="engine.rules",
+                        exc_info=res,
+                    )
+
+    # ─────────────────────────────────────────────────────────
+    # Exited Container Evaluation
+    # ─────────────────────────────────────────────────────────
+
+    async def evaluate_exited(self, exited_batch: list[ExitedContainerInfo]) -> None:
+        """Evaluate exited containers against rules with metric='exit_code'.
+
+        This runs in parallel with evaluate() on each polling cycle.
+        Only rules with `condition.metric == 'exit_code'` are considered.
+        """
+        exit_rules = [r for r in self._rules if r.condition.metric == "exit_code"]
+        if not exit_rules:
+            return
+
+        for exited in exited_batch:
+            for rule in exit_rules:
+                if not self._matches_container(rule, exited.container_name):
+                    continue
+
+                # Check if this exit code is in the rule's allowlist
+                if exited.exit_code not in rule.condition.exit_code_allowlist:
+                    logger.debug(
+                        f"Exit code {exited.exit_code} not in allowlist for "
+                        f"'{exited.container_name}', skipping",
+                        component="engine.rules",
+                    )
+                    continue
+
+                await self._trigger_exited_action(rule, exited)
+
+    async def _trigger_exited_action(
+        self, rule: RuleConfig, exited: ExitedContainerInfo
+    ) -> None:
+        """Execute recovery action for an exited container.
+
+        Flow:
+        1. Check circuit breaker
+        2. If open → notify CRITICAL with last logs (crash loop detected)
+        3. If closed → execute start action → record intervention → notify
+        """
+        container_name = exited.container_name
+        action_type = rule.action.type.value
+
+        # ── Human-readable exit code description ──
+        exit_descriptions: dict[int, str] = {
+            1: "General error",
+            137: "SIGKILL (OOM Killer or docker kill)",
+            139: "SIGSEGV (Segmentation fault)",
+            143: "SIGTERM (docker stop)",
+            255: "Unknown/application-defined error",
+        }
+        exit_desc = exit_descriptions.get(exited.exit_code, "Unknown")
+
+        # ── Circuit Breaker Check ──
+        try:
+            await self._state_manager.check_circuit_breaker(container_name)
+        except CircuitBreakerOpen as e:
+            logger.warning(
+                f"Circuit breaker OPEN for exited container: {e}",
+                component="engine.rules",
+            )
+            # Include last logs in the Circuit Breaker notification
+            log_snippet = (
+                exited.last_logs[-1500:]
+                if len(exited.last_logs) > 1500
+                else exited.last_logs
+            )
+            await self._notify_all_by_name(
+                rule,
+                container_name=container_name,
+                title="🔴 CIRCUIT BREAKER TRIPPED — Crash Loop Detected",
+                message=(
+                    f"**Container:** {container_name}\n"
+                    f"**Exit Code:** {exited.exit_code} ({exit_desc})\n"
+                    f"**Image:** {exited.image}\n"
+                    f"**Parado desde:** {exited.finished_at}\n"
+                    f"**Status:** Autonomous action SUSPENDED. Human intervention required.\n"
+                    f"\n──── Últimos Logs ────\n```\n{log_snippet}\n```"
+                ),
+                severity=Severity.CRITICAL,
+            )
+            return
+
+        # ── Execute Action ──
+        action = self._actions.get(action_type)
+        if not action:
+            logger.error(
+                f"No action handler registered for type '{action_type}'",
+                component="engine.rules",
+            )
+            return
+
+        logger.warning(
+            f"Executing '{action_type}' on exited container '{container_name}' "
+            f"(exit_code={exited.exit_code}, rule='{rule.name}')",
+            component="engine.rules",
+        )
+
+        success = True
+        error_msg: str | None = None
+
+        try:
+            await action.execute(
+                container_id=exited.container_id,
+                container_name=container_name,
+                timeout=rule.action.timeout,
+            )
+        except Exception as e:
+            success = False
+            error_msg = str(e)
+            logger.error(
+                f"Action '{action_type}' failed on '{container_name}': {e}",
+                component="engine.rules",
+            )
+
+        # ── Record Intervention ──
+        await self._state_manager.record_intervention(
+            container_id=exited.container_id,
+            container_name=container_name,
+            rule_name=rule.name,
+            action_type=action_type,
+            success=success,
+            error_message=error_msg,
+        )
+
+        # ── Notify ──
+        status_emoji = "✅" if success else "❌"
+        log_snippet = exited.last_logs[-1500:] if len(exited.last_logs) > 1500 else exited.last_logs
+        await self._notify_all_by_name(
+            rule,
+            container_name=container_name,
+            title=f"{status_emoji} Exited Container Recovery",
+            message=(
+                f"**Action:** {action_type}\n"
+                f"**Container:** {container_name}\n"
+                f"**Exit Code:** {exited.exit_code} ({exit_desc})\n"
+                f"**Image:** {exited.image}\n"
+                f"**Rule:** {rule.name}\n"
+                f"**Success:** {success}\n"
+                f"\n──── Últimos Logs ────\n```\n{log_snippet}\n```"
+            ),
+            severity=rule.notify.severity,
+        )
+
+    async def _notify_all_by_name(
+        self,
+        rule: RuleConfig,
+        container_name: str,
+        title: str,
+        message: str,
+        severity: Severity,
+    ) -> None:
+        """Send notifications using a container name string.
+
+        Similar to _notify_all but doesn't require a ContainerMetrics object.
+        Used by evaluate_exited() where we have ExitedContainerInfo instead.
+        """
+        tasks = []
+        for channel_name in rule.notify.channels:
+            notifier = self._notifiers.get(channel_name)
+            if notifier:
+                tasks.append(
+                    notifier.send(
+                        title=title,
+                        message=message,
+                        severity=severity.value,
+                        container_name=container_name,
+                    )
+                )
+            else:
+                logger.debug(
+                    f"Notifier '{channel_name}' not registered, skipping",
+                    component="engine.rules",
+                )
+
+        if tasks:
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            for res in results:
+                if isinstance(res, Exception):
+                    logger.error(
+                        f"Notifier failed to send notification: {res}",
+                        component="engine.rules",
+                        exc_info=res,
+                    )

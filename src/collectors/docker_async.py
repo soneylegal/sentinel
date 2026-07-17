@@ -38,6 +38,32 @@ class ContainerMetrics:
     timestamp: datetime = field(default_factory=lambda: datetime.now(UTC))
 
 
+# Exit codes that indicate the container should NOT be auto-started
+_CLEAN_EXIT_CODES = {0}
+
+# Restart policies that indicate the container is expected to be running
+_RESTARTABLE_POLICIES = {"always", "unless-stopped", "on-failure"}
+
+
+@dataclass(frozen=True, slots=True)
+class ExitedContainerInfo:
+    """Information about a container that has exited abnormally.
+
+    Unlike ContainerMetrics, exited containers have no live CPU/RAM stats.
+    Instead, we capture the exit code, restart policy, and last logs to
+    enable recovery decisions and rich Discord notifications.
+    """
+
+    container_id: str
+    container_name: str
+    image: str
+    exit_code: int
+    finished_at: str  # ISO timestamp of when the container stopped
+    restart_policy: str  # "no", "always", "unless-stopped", "on-failure"
+    last_logs: str  # Last N lines of container logs
+    timestamp: datetime = field(default_factory=lambda: datetime.now(UTC))
+
+
 class DockerAsyncCollector:
     """Asynchronous Docker metrics collector using aiodocker.
 
@@ -109,6 +135,128 @@ class DockerAsyncCollector:
             component="collectors.docker_async",
         )
         return metrics
+
+    async def collect_exited(self) -> list[ExitedContainerInfo]:
+        """Collect info for containers that exited abnormally.
+
+        Queries Docker with `all=True` to include stopped containers, then
+        filters to only those with:
+        - status == "exited"
+        - exit_code NOT in _CLEAN_EXIT_CODES (i.e., not 0)
+        - restart_policy in _RESTARTABLE_POLICIES (container should be running)
+
+        Returns:
+            List of ExitedContainerInfo for containers needing recovery.
+        """
+        if not self._client:
+            raise DockerConnectionError("Not connected to Docker daemon. Call connect() first.")
+
+        # all=True includes stopped containers
+        containers = await self._client.containers.list(all=True)
+        if not containers:
+            return []
+
+        tasks = [self._collect_single_exited(container) for container in containers]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        exited: list[ExitedContainerInfo] = []
+        for result in results:
+            if isinstance(result, BaseException):
+                logger.warning(
+                    f"Failed to inspect exited container: {result}",
+                    component="collectors.docker_async",
+                )
+            elif result is not None:
+                exited.append(result)
+
+        if exited:
+            logger.info(
+                f"Found {len(exited)} exited containers with abnormal exit codes",
+                component="collectors.docker_async",
+            )
+        return exited
+
+    async def _collect_single_exited(
+        self,
+        container: aiodocker.docker.DockerContainer,
+    ) -> ExitedContainerInfo | None:
+        """Inspect a single container and return info if it exited abnormally."""
+        try:
+            info = await container.show()
+
+            status = info.get("State", {}).get("Status", "")
+            if status != "exited":
+                return None
+
+            exit_code = info.get("State", {}).get("ExitCode", 0)
+            if exit_code in _CLEAN_EXIT_CODES:
+                return None
+
+            restart_policy = (
+                info.get("HostConfig", {}).get("RestartPolicy", {}).get("Name", "no")
+            )
+            if restart_policy not in _RESTARTABLE_POLICIES:
+                return None
+
+            name = info.get("Name", "").lstrip("/")
+            image = info.get("Config", {}).get("Image", "unknown")
+            finished_at = info.get("State", {}).get("FinishedAt", "")
+
+            # Fetch last 50 lines of logs
+            last_logs = await self._get_container_logs(container, tail=50)
+
+            return ExitedContainerInfo(
+                container_id=container.id[:12],
+                container_name=name,
+                image=image,
+                exit_code=exit_code,
+                finished_at=finished_at,
+                restart_policy=restart_policy,
+                last_logs=last_logs,
+            )
+        except Exception as e:
+            logger.error(
+                f"Error inspecting exited container {container.id[:12]}: {e}",
+                component="collectors.docker_async",
+            )
+            return None
+
+    async def _get_container_logs(
+        self,
+        container: aiodocker.docker.DockerContainer,
+        tail: int = 50,
+    ) -> str:
+        """Fetch the last N lines of a container's logs."""
+        try:
+            log_lines = await container.log(
+                stdout=True,
+                stderr=True,
+                tail=tail,
+            )
+            return "\n".join(log_lines) if log_lines else "(no logs available)"
+        except Exception as e:
+            logger.warning(
+                f"Failed to fetch logs for container {container.id[:12]}: {e}",
+                component="collectors.docker_async",
+            )
+            return f"(failed to fetch logs: {e})"
+
+    async def get_container_logs(self, container_id: str, tail: int = 50) -> str:
+        """Fetch the last N lines of a container's logs by container ID.
+
+        Public interface for use by the RulesEngine when building
+        notifications (e.g., circuit breaker trip alerts).
+        """
+        assert self._client is not None, "Collector not connected"
+        try:
+            container = await self._client.containers.get(container_id)
+            return await self._get_container_logs(container, tail=tail)
+        except Exception as e:
+            logger.warning(
+                f"Failed to fetch logs for container {container_id[:12]}: {e}",
+                component="collectors.docker_async",
+            )
+            return f"(failed to fetch logs: {e})"
 
     async def _collect_single(
         self,

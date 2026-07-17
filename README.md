@@ -5,7 +5,6 @@
   <img src="https://img.shields.io/badge/FastAPI-009688?style=for-the-badge&logo=fastapi&logoColor=white" alt="FastAPI"/>
   <img src="https://img.shields.io/badge/SQLite-003B57?style=for-the-badge&logo=sqlite&logoColor=white" alt="SQLite"/>
   <img src="https://img.shields.io/badge/license-Apache%202.0-red?style=for-the-badge" alt="License"/>
-  <img src="https://img.shields.io/badge/code%20style-black-000000?style=for-the-badge" alt="Code style: black"/>
   <img src="https://img.shields.io/badge/type%20checked-mypy-blue?style=for-the-badge" alt="mypy"/>
 </p>
 
@@ -32,6 +31,7 @@
 - [Configuração](#-configuração)
 - [Uso](#-uso)
 - [API de Observabilidade](#-api-de-observabilidade)
+- [Segurança](#-segurança)
 - [Testes](#-testes)
 - [Deploy com Docker Compose](#-deploy-com-docker-compose)
 - [Licença](#-licença)
@@ -43,10 +43,11 @@
 O **Sentinel** é um daemon enterprise-grade que opera de forma autônoma sobre a sua infraestrutura Docker. Ele:
 
 - **Coleta métricas** (CPU, RAM, Health Status) de todos os containers em execução via Docker Socket — de forma totalmente assíncrona e non-blocking.
-- **Avalia regras** definidas em YAML contra as métricas coletadas, com suporte a duração sustentada (a condição precisa persistir por N segundos antes de agir).
-- **Executa ações corretivas** automáticas: restart, stop, scale (via `docker compose`).
-- **Previne Crash Loop BackOff** com um Circuit Breaker apoiado em SQLite — se um container for reiniciado mais de N vezes em M minutos, a ação autônoma é suspensa e humanos são alertados.
-- **Notifica** via múltiplos canais (Console, Discord, Slack) usando o padrão Strategy.
+- **Monitora containers parados** (`exited`) com exit codes anormais (1, 137, 255) e tenta recuperá-los automaticamente.
+- **Avalia regras** definidas em YAML contra as métricas coletadas, com suporte a duração sustentada (a condição precisa persistir por N segundos antes de agir) e suavização de métricas via sliding window average.
+- **Executa ações corretivas** automáticas: restart, stop, start, scale (via `docker compose`).
+- **Previne Crash Loop BackOff** com um Circuit Breaker apoiado em SQLite — se um container for reiniciado mais de N vezes em M minutos, o CB permanece aberto permanentemente até reset manual via API.
+- **Notifica** via múltiplos canais (Console, Discord, Slack) usando o padrão Strategy. Notificações do Circuit Breaker incluem os últimos logs do container para diagnóstico rápido.
 - **Expõe uma API interna** para observabilidade do seu próprio estado.
 
 ---
@@ -62,8 +63,8 @@ O **Sentinel** é um daemon enterprise-grade que opera de forma autônoma sobre 
 | **Logging** | Loguru | Logs estruturados em JSON (Datadog/ELK-ready) |
 | **Configuração** | Pydantic Settings | Validação rigorosa de `.env` e `rules.yaml` |
 | **Notificações** | `aiohttp` | Webhooks assíncronos para Discord e Slack |
-| **Lint / Type Check** | `ruff` + `mypy` + `black` | Qualidade e formatação de código |
-| **Testes** | `pytest` + `pytest-asyncio` | 197 testes unitários e de integração |
+| **Lint / Type Check** | `ruff` + `mypy` | Qualidade e formatação de código |
+| **Testes** | `pytest` + `pytest-asyncio` | 234 testes unitários e de integração |
 | **CI/CD** | GitHub Actions | Matrix Python 3.11/3.12/3.13 |
 
 ---
@@ -72,43 +73,65 @@ O **Sentinel** é um daemon enterprise-grade que opera de forma autônoma sobre 
 
 O Sentinel segue os princípios de **Clean Architecture**, separando responsabilidades em módulos independentes e intercambiáveis.
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                        main.py (Orchestrator)                    │
-│           Bootstraps + runs 3 concurrent asyncio tasks           │
-├──────────┬──────────────────────────────┬────────────────────────┤
-│          │                              │                        │
-│  ┌───────▼───────┐   ┌─────────────────▼──────────┐   ┌────────▼────────┐
-│  │  Collector     │   │     Rules Engine            │   │   FastAPI        │
-│  │  (aiodocker)   │──▶│  condition eval             │   │   /health        │
-│  │                │   │  sustained-duration tracker  │   │   /history       │
-│  └────────────────┘   │  circuit breaker check       │   │   /circuit-...   │
-│                       └──────┬──────────┬────────────┘   └─────────────────┘
-│                              │          │
-│                    ┌─────────▼──┐  ┌────▼──────────┐
-│                    │  Actions    │  │  Notifiers     │
-│                    │  (Strategy) │  │  (Strategy)    │
-│                    │  • Restart  │  │  • Console     │
-│                    │  • Stop     │  │  • Discord     │
-│                    │  • Scale    │  │  • Slack        │
-│                    └─────────┬──┘  └────────────────┘
-│                              │
-│                    ┌─────────▼──────────┐
-│                    │  State Manager     │
-│                    │  (SQLite)          │
-│                    │  • History         │
-│                    │  • Circuit Breaker │
-│                    └────────────────────┘
-└─────────────────────────────────────────────────────────────────┘
+```mermaid
+graph TD
+    subgraph Orchestrator["main.py (Orchestrator)"]
+        direction TB
+        MAIN["Bootstraps + runs 3 concurrent asyncio tasks"]
+    end
+
+    subgraph Collector["Collector (aiodocker)"]
+        C1["• running containers"]
+        C2["• exited containers"]
+    end
+
+    subgraph Engine["Rules Engine"]
+        E1["• condition eval"]
+        E2["• sustained-duration tracker"]
+        E3["• sliding window average"]
+        E4["• circuit breaker check"]
+    end
+
+    subgraph API["FastAPI"]
+        A1["/health"]
+        A2["/history"]
+        A3["/circuit-breakers"]
+    end
+
+    subgraph Actions["Actions (Strategy)"]
+        AC1["Restart"]
+        AC2["Stop"]
+        AC3["Start"]
+        AC4["Scale"]
+    end
+
+    subgraph Notifiers["Notifiers (Strategy)"]
+        N1["Console"]
+        N2["Discord"]
+        N3["Slack"]
+    end
+
+    subgraph State["State Manager (SQLite)"]
+        S1["• Intervention History"]
+        S2["• Circuit Breaker (Latch)"]
+    end
+
+    Orchestrator --> Collector
+    Orchestrator --> Engine
+    Orchestrator --> API
+    Collector -->|metrics| Engine
+    Engine --> Actions
+    Engine --> Notifiers
+    Actions --> State
 ```
 
 ### Fluxo de Execução
 
-1. **Collector** consulta o Docker Daemon e normaliza métricas (compatível com cgroup v1/v2, Linux/macOS/WSL).
-2. **Rules Engine** cruza métricas com as regras configuradas.
+1. **Collector** consulta o Docker Daemon e normaliza métricas (compatível com cgroup v1/v2, Linux/macOS/WSL). Também coleta containers em `exited` com exit codes anormais.
+2. **Rules Engine** cruza métricas com as regras configuradas, aplicando sliding window average para suavização de métricas.
 3. Se a condição for satisfeita pelo tempo sustentado, o engine consulta o **State Manager**.
 4. Se o **Circuit Breaker** estiver fechado, a **Action** é executada e uma **Notification** é enviada.
-5. Se o **Circuit Breaker** estiver aberto (muitos restarts recentes), a ação é suspensa e um alerta CRITICAL é emitido para intervenção humana.
+5. Se o **Circuit Breaker** estiver aberto (muitos restarts recentes), a ação é suspensa, os últimos logs do container são coletados, e um alerta CRITICAL é emitido para intervenção humana. O CB permanece aberto até reset manual via API.
 
 ---
 
@@ -118,7 +141,7 @@ O Sentinel segue os princípios de **Clean Architecture**, separando responsabil
 Os módulos `actions/` e `notifiers/` implementam interfaces abstratas (`BaseAction`, `BaseNotifier`). O engine invoca polimorficamente sem saber qual implementação concreta está em uso.
 
 ```python
-# O engine não sabe se é Restart, Stop ou Scale
+# O engine não sabe se é Restart, Stop, Start ou Scale
 await action.execute(container_id, container_name, timeout)
 
 # O engine não sabe se é Console, Discord ou Slack
@@ -129,13 +152,17 @@ await notifier.send(title, message, severity, container_name)
 O Rules Engine observa o fluxo de métricas do Collector de forma assíncrona a cada ciclo de polling, reagindo a mudanças de estado.
 
 ### Circuit Breaker / State Pattern
-O State Manager mantém um registro persistente (SQLite) de todas as intervenções. Antes de executar qualquer ação destrutiva:
+O State Manager mantém um registro persistente (SQLite) de todas as intervenções. Antes de executar qualquer ação:
 
 ```
-"Eu já reiniciei esse container N vezes nos últimos M minutos?"
-├── NÃO → Executa a ação normalmente
-└── SIM → Circuit Breaker ABERTO → Suspende ação → Alerta humanos
+"O CB já está aberto (is_open=1) para este container?"
+├── SIM → Circuit Breaker PERMANECE ABERTO → Alerta humanos com logs
+└── NÃO → "Eu já reiniciei esse container N vezes nos últimos M minutos?"
+           ├── NÃO → Executa a ação normalmente
+           └── SIM → Latch: marca is_open=1 → Suspende ação → Alerta humanos
 ```
+
+O Circuit Breaker permanece aberto **permanentemente** após ser acionado. O reset só ocorre via `POST /circuit-breakers/{name}/reset`.
 
 ### Fail Fast
 A configuração (`.env` + `rules.yaml`) é validada rigorosamente via Pydantic **antes** do daemon inicializar. Regex inválido, métricas desconhecidas, ou campos obrigatórios ausentes impedem a inicialização.
@@ -154,13 +181,14 @@ sentinel/
 │   │   ├── logger.py               # Loguru JSON estruturado
 │   │   └── exceptions.py           # Exceções customizadas
 │   ├── collectors/
-│   │   └── docker_async.py         # aiodocker + normalização cross-platform
+│   │   └── docker_async.py         # aiodocker + normalização cross-platform + exited
 │   ├── engine/
-│   │   ├── rules.py                # Motor de regras + sustained-duration
-│   │   └── state_manager.py        # SQLite + Circuit Breaker
+│   │   ├── rules.py                # Motor de regras + sustained-duration + sliding window
+│   │   └── state_manager.py        # SQLite + Circuit Breaker (latch permanente)
 │   ├── actions/
 │   │   ├── base.py                 # Interface abstrata (Strategy)
 │   │   ├── restart.py              # RestartAction + StopAction
+│   │   ├── start.py                # StartAction (containers exited)
 │   │   └── scale.py                # ScaleComposeAction
 │   ├── notifiers/
 │   │   ├── base.py                 # Interface + ConsoleNotifier
@@ -172,16 +200,18 @@ sentinel/
 ├── tests/
 │   ├── conftest.py                 # Fixtures centralizadas + mocks
 │   ├── test_config.py              # Validação Pydantic (93 testes)
-│   ├── test_state_manager.py       # SQLite + Circuit Breaker (37 testes)
-│   ├── test_rules_engine.py        # Matching + Conditions (20 testes)
-│   └── test_api.py                 # Endpoints FastAPI (47 testes)
+│   ├── test_state_manager.py       # SQLite + Circuit Breaker (42 testes)
+│   ├── test_rules_engine.py        # Matching + Conditions + CB logs (22 testes)
+│   ├── test_exited_recovery.py     # Exited container recovery (26 testes)
+│   ├── test_api.py                 # Endpoints FastAPI (47 testes)
+│   └── test_collector.py           # Collector metrics + normalization (4 testes)
 ├── .github/
 │   └── workflows/ci.yml            # GitHub Actions CI pipeline
 ├── db/                             # Banco SQLite (criado em runtime)
 ├── rules.yaml                      # Regras de monitoramento
 ├── docker-compose.yml              # Deploy com socket mount
 ├── Dockerfile                      # Multi-stage, non-root
-├── pyproject.toml                  # pytest + mypy + ruff + black
+├── pyproject.toml                  # pytest + mypy + ruff
 ├── requirements.txt                # Dependências
 ├── .env.example                    # Template de configuração
 ├── .gitignore
@@ -247,12 +277,13 @@ cp .env.example .env
 | `SENTINEL_RULES_PATH` | `rules.yaml` | Caminho do arquivo de regras |
 | `SENTINEL_DB_PATH` | `db/sentinel.db` | Caminho do banco SQLite |
 | `SENTINEL_POLL_INTERVAL` | `15` | Intervalo de coleta em segundos |
-| `SENTINEL_CIRCUIT_BREAKER_THRESHOLD` | `3` | Restarts antes de desarmar o disjuntor |
+| `SENTINEL_CIRCUIT_BREAKER_THRESHOLD` | `3` | Ações antes de desarmar o disjuntor |
 | `SENTINEL_CIRCUIT_BREAKER_WINDOW_MINUTES` | `5` | Janela de tempo do disjuntor |
 | `SENTINEL_LOG_LEVEL` | `INFO` | Nível de log |
 | `SENTINEL_LOG_FORMAT` | `json` | Formato: `json` ou `pretty` |
 | `SENTINEL_DISCORD_WEBHOOK_URL` | — | Webhook do Discord |
 | `SENTINEL_SLACK_WEBHOOK_URL` | — | Webhook do Slack |
+
 
 ### Regras de Monitoramento (`rules.yaml`)
 
@@ -267,17 +298,19 @@ rules:
       container_name_pattern: ".*"     # Regex: quais containers monitorar
       exclude_patterns:
         - "^sentinel$"                 # Regex: quais excluir
+        - "^postgres.*"               # Bancos de dados excluídos
     condition:
-      metric: cpu_percent              # cpu_percent | memory_percent | memory_usage_mb | health_status
+      metric: cpu_percent              # cpu_percent | memory_percent | memory_usage_mb | health_status | status | exit_code
       operator: ">"                    # > | < | >= | <= | ==
       threshold: 90.0                  # Valor limite
       sustained_seconds: 60           # Duração mínima da violação
     action:
-      type: restart                    # restart | stop | scale | exec
+      type: restart                    # restart | stop | start | scale
       timeout: 30                      # Timeout para ação graceful
     notify:
       channels:
         - console                      # console | discord | slack
+        - discord
       severity: critical               # info | warning | critical
 ```
 
@@ -288,6 +321,8 @@ rules:
 | High CPU Auto-Restart | CPU > 90% por 60s | Restart |
 | Memory Leak Detection | RAM > 85% por 120s | Restart |
 | Unhealthy Container Watchdog | health_status == unhealthy por 30s | Restart |
+| Restarting Container Watchdog | status == restarting por 30s | Restart |
+| Exited Container Recovery | exit_code ∈ {1, 137, 255} | Start |
 
 ---
 
@@ -345,8 +380,8 @@ curl -s http://localhost:9120/health | python -m json.tool
     "status": "ok",
     "docker_connected": true,
     "uptime_seconds": 3421.50,
-    "version": "1.0.0",
-    "timestamp": "2026-05-07T18:30:00.000000+00:00"
+    "version": "1.0.1",
+    "timestamp": "2026-07-17T12:30:00.000000+00:00"
 }
 ```
 
@@ -366,17 +401,7 @@ curl -s http://localhost:9120/history | python -m json.tool
             "action_type": "restart",
             "success": true,
             "error_message": null,
-            "created_at": "2026-05-07T18:25:00.000Z"
-        },
-        {
-            "id": 2,
-            "container_id": "def789abc012",
-            "container_name": "redis",
-            "rule_name": "Memory Leak Detection",
-            "action_type": "restart",
-            "success": false,
-            "error_message": "Container not found",
-            "created_at": "2026-05-07T18:20:00.000Z"
+            "created_at": "2026-07-17T12:25:00.000Z"
         }
     ]
 }
@@ -392,7 +417,7 @@ curl -s http://localhost:9120/circuit-breakers | python -m json.tool
         {
             "container_name": "webapp",
             "trip_count": 3,
-            "last_tripped": "2026-05-07T18:25:00Z",
+            "last_tripped": "2026-07-17T12:25:00Z",
             "is_open": true
         }
     ]
@@ -413,6 +438,32 @@ curl -s -X POST http://localhost:9120/circuit-breakers/webapp/reset | python -m 
 
 ---
 
+## 🔒 Segurança
+
+### O que o Sentinel faz nos containers
+
+| Operação | Risco para dados |
+|---|---|
+| `restart` (SIGTERM → wait → SIGKILL → start) | **Nenhum** — volumes preservados |
+| `stop` (SIGTERM → wait → SIGKILL) | **Nenhum** — container para, dados intactos |
+| `start` (inicia container parado) | **Nenhum** — usa mesma config e volumes |
+| `scale` (docker compose scale) | **Nenhum** — cria/remove réplicas |
+
+### O que o Sentinel NUNCA faz
+
+O Sentinel **não possui** código para: `docker rm`, `docker rmi`, `docker volume rm`, `docker exec`, `docker build`, `docker pull`, `docker cp`, ou qualquer operação que modifique, exclua ou corrompa dados.
+
+### Camadas de proteção
+
+- **`exclude_patterns`** — Exclui containers críticos (bancos de dados, reverse proxies) de todas as regras.
+- **Circuit Breaker permanente** — Limita a 3 ações por container, depois para permanentemente até reset manual via API.
+- **`sustained_seconds`** — Espera N segundos antes de agir, evitando falsos positivos.
+- **Audit trail** — Toda ação é registrada no SQLite e notificada via Discord com os logs do container.
+- **Non-root container** — O Sentinel roda como usuário não-root dentro do container.
+- **Docker socket read-only** — O volume mount usa `:ro` para proteger o socket no filesystem.
+
+---
+
 ## 🧪 Testes
 
 ```bash
@@ -422,14 +473,10 @@ python -m pytest tests/ -v
 # Lint + Type check
 ruff check src/ tests/
 mypy src/ --strict
-black --check src/ tests/
+
 
 # Resultado esperado:
-# tests/test_config.py             93 passed
-# tests/test_api.py                47 passed
-# tests/test_state_manager.py      37 passed
-# tests/test_rules_engine.py       20 passed
-# ==================== 197 passed in ~2.5s ====================
+# ==================== 234 passed in ~4.5s ====================
 ```
 
 ### Cobertura de testes
@@ -438,8 +485,10 @@ black --check src/ tests/
 |---|---|---|
 | `test_config.py` | 93 | Pydantic settings, regex, YAML parsing, Fail Fast (22 cenários malformados) |
 | `test_api.py` | 47 | Todos os endpoints, schemas, 503 fallback, CORS, OpenAPI, 404/405 |
-| `test_state_manager.py` | 37 | SQLite CRUD, Circuit Breaker trip/reset, Crash Loop simulation, isolamento |
-| `test_rules_engine.py` | 20 | Pattern matching, operadores, sustained-duration, exclusões, circuit breaker |
+| `test_state_manager.py` | 42 | SQLite CRUD, Circuit Breaker latch/trip/reset, Crash Loop, isolamento, action types |
+| `test_exited_recovery.py` | 26 | Exited container detection, exit code filtering, StartAction, CB integration |
+| `test_rules_engine.py` | 22 | Pattern matching, operadores, sustained-duration, exclusões, CB com logs |
+| `test_collector.py` | 4 | Collector metrics, cgroup normalization |
 
 ---
 
@@ -463,6 +512,7 @@ docker compose down
 
 - **Socket mount** (`/var/run/docker.sock`) em modo read-only.
 - **Volume persistente** para o banco SQLite.
+- **Auto-detect Docker GID** — o entrypoint detecta automaticamente o GID do socket e configura permissões.
 - **Healthcheck** contra o endpoint `/health`.
 - **Log rotation** (max 10MB, 3 arquivos).
 - **Non-root user** no container.

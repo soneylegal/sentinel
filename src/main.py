@@ -20,6 +20,7 @@ import sys
 from src.actions.base import BaseAction
 from src.actions.restart import RestartAction, StopAction
 from src.actions.scale import ScaleComposeAction
+from src.actions.start import StartAction
 from src.api.server import APIServer
 from src.collectors.docker_async import DockerAsyncCollector
 from src.core.config import SentinelSettings, load_rules, load_settings
@@ -94,6 +95,7 @@ class SentinelDaemon:
         actions: dict[str, BaseAction] = {
             "restart": RestartAction(docker_client),
             "stop": StopAction(docker_client),
+            "start": StartAction(docker_client),
             "scale": ScaleComposeAction(docker_client),
         }
 
@@ -116,6 +118,7 @@ class SentinelDaemon:
             state_manager=self._state_manager,
             actions=actions,
             notifiers=notifiers,
+            collector=self._collector,
         )
 
         # ── 7. Start API Server ──
@@ -157,9 +160,14 @@ class SentinelDaemon:
                     await self._engine.evaluate(metrics)
                 else:
                     logger.debug(
-                        "No containers found in this cycle",
+                        "No running containers found in this cycle",
                         component="main",
                     )
+
+                # Collect and evaluate exited containers
+                exited = await self._collector.collect_exited()
+                if exited:
+                    await self._engine.evaluate_exited(exited)
 
             except DockerConnectionError as e:
                 logger.error(
