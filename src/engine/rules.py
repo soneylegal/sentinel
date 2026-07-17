@@ -20,7 +20,11 @@ from src.core.logger import get_logger
 
 if TYPE_CHECKING:
     from src.actions.base import BaseAction
-    from src.collectors.docker_async import ContainerMetrics, ExitedContainerInfo
+    from src.collectors.docker_async import (
+        ContainerMetrics,
+        DockerAsyncCollector,
+        ExitedContainerInfo,
+    )
     from src.engine.state_manager import StateManager
     from src.notifiers.base import BaseNotifier
 
@@ -64,11 +68,13 @@ class RulesEngine:
         state_manager: StateManager,
         actions: dict[str, BaseAction],
         notifiers: dict[str, BaseNotifier],
+        collector: DockerAsyncCollector | None = None,
     ) -> None:
         self._rules = [r for r in rules if r.enabled]
         self._state_manager = state_manager
         self._actions = actions
         self._notifiers = notifiers
+        self._collector = collector
 
         # Violation tracking: (container_name, rule_name) -> ViolationTracker
         self._violations: dict[tuple[str, str], ViolationTracker] = {}
@@ -205,6 +211,14 @@ class RulesEngine:
                 f"Circuit breaker OPEN: {e}",
                 component="engine.rules",
             )
+
+            # Fetch container logs for the notification
+            logs = "(collector not available)"
+            if self._collector:
+                logs = await self._collector.get_container_logs(
+                    metrics.container_id, tail=50
+                )
+
             await self._notify_all(
                 rule,
                 metrics,
@@ -212,6 +226,7 @@ class RulesEngine:
                 message=(
                     f"Container '{container_name}' has been restarted too many times. "
                     f"Autonomous action SUSPENDED. Human intervention required."
+                    f"\n\n──── Últimos Logs ────\n```\n{logs}\n```"
                 ),
                 severity=Severity.CRITICAL,
             )

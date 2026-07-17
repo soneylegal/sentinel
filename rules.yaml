@@ -6,7 +6,7 @@
 #
 # Supported metrics: cpu_percent, memory_percent, memory_usage_mb, health_status, status, exit_code
 # Supported operators: ">", "<", ">=", "<=", "=="
-# Supported actions: restart, stop, start, scale, exec
+# Supported actions: restart, stop, start, scale
 # ─────────────────────────────────────────────────────────
 
 global:
@@ -22,6 +22,11 @@ rules:
       exclude_patterns:
         - "^sentinel$"                # Never act on ourselves
         - "^traefik.*"                # Never touch the reverse proxy
+        - "^postgres.*"               # Database — restart won't fix infra issues
+        - "^mysql.*"
+        - "^mariadb.*"
+        - "^mongo.*"
+        - "^redis.*"
     condition:
       metric: cpu_percent
       operator: ">"
@@ -44,6 +49,11 @@ rules:
       exclude_patterns:
         - "^sentinel$"
         - "^traefik.*"                # Never touch the reverse proxy
+        - "^postgres.*"               # Database — restart won't fix infra issues
+        - "^mysql.*"
+        - "^mariadb.*"
+        - "^mongo.*"
+        - "^redis.*"
     condition:
       metric: memory_percent
       operator: ">"
@@ -66,6 +76,11 @@ rules:
       exclude_patterns:
         - "^sentinel$"
         - "^traefik.*"                # Never touch the reverse proxy
+        - "^postgres.*"               # Database — restart won't fix infra issues
+        - "^mysql.*"
+        - "^mariadb.*"
+        - "^mongo.*"
+        - "^redis.*"
     condition:
       metric: health_status
       operator: "=="
@@ -88,6 +103,11 @@ rules:
       exclude_patterns:
         - "^sentinel$"
         - "^traefik.*"                # Never touch the reverse proxy
+        - "^postgres.*"               # Database — restart won't fix infra issues
+        - "^mysql.*"
+        - "^mariadb.*"
+        - "^mongo.*"
+        - "^redis.*"
     condition:
       metric: status
       operator: "=="
@@ -110,6 +130,11 @@ rules:
       exclude_patterns:
         - "^sentinel$"
         - "^traefik.*"                # Never touch the reverse proxy
+        - "^postgres.*"               # Database — restart won't fix infra issues
+        - "^mysql.*"
+        - "^mariadb.*"
+        - "^mongo.*"
+        - "^redis.*"
     condition:
       metric: exit_code
       operator: "=="

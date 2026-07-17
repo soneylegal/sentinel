@@ -241,6 +241,23 @@ class DockerAsyncCollector:
             )
             return f"(failed to fetch logs: {e})"
 
+    async def get_container_logs(self, container_id: str, tail: int = 50) -> str:
+        """Fetch the last N lines of a container's logs by container ID.
+
+        Public interface for use by the RulesEngine when building
+        notifications (e.g., circuit breaker trip alerts).
+        """
+        assert self._client is not None, "Collector not connected"
+        try:
+            container = await self._client.containers.get(container_id)
+            return await self._get_container_logs(container, tail=tail)
+        except Exception as e:
+            logger.warning(
+                f"Failed to fetch logs for container {container_id[:12]}: {e}",
+                component="collectors.docker_async",
+            )
+            return f"(failed to fetch logs: {e})"
+
     async def _collect_single(
         self,
         container: aiodocker.docker.DockerContainer,

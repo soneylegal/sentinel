@@ -337,7 +337,17 @@ def mock_state_manager() -> AsyncMock:
 
 
 @pytest.fixture
-def make_engine(mock_action, mock_notifier, mock_state_manager):  # type: ignore[no-untyped-def]
+def mock_collector() -> AsyncMock:
+    """A mocked DockerAsyncCollector with tracked get_container_logs()."""
+    collector = AsyncMock()
+    collector.get_container_logs = AsyncMock(
+        return_value="Error: connection refused\nSegfault at 0x0000\nProcess exited"
+    )
+    return collector
+
+
+@pytest.fixture
+def make_engine(mock_action, mock_notifier, mock_state_manager, mock_collector):  # type: ignore[no-untyped-def]
     """Factory fixture to create a RulesEngine with mocked dependencies.
 
     Returns a tuple of ``(engine, action_mock, state_manager_mock)``
@@ -356,10 +366,12 @@ def make_engine(mock_action, mock_notifier, mock_state_manager):  # type: ignore
         action_mock: AsyncMock | None = None,
         notifier_mock: AsyncMock | None = None,
         sm_mock: AsyncMock | None = None,
+        collector_mock: AsyncMock | None = None,
     ) -> tuple[RulesEngine, AsyncMock, AsyncMock]:
         act = action_mock or mock_action
         ntf = notifier_mock or mock_notifier
         sm = sm_mock or mock_state_manager
+        col = collector_mock or mock_collector
 
         default_rule = RuleConfig(
             name="Default",
@@ -379,6 +391,7 @@ def make_engine(mock_action, mock_notifier, mock_state_manager):  # type: ignore
             state_manager=sm,
             actions={"restart": act, "stop": act, "start": act, "scale": act},
             notifiers={"console": ntf},
+            collector=col,
         )
         return engine, act, sm
 

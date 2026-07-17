@@ -118,6 +118,7 @@ class SentinelDaemon:
             state_manager=self._state_manager,
             actions=actions,
             notifiers=notifiers,
+            collector=self._collector,
         )
 
         # ── 7. Start API Server ──
